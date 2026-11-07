@@ -17,6 +17,9 @@ jobs:
       - name: Integrate native content and launcher name
         shell: pwsh
         run: ./tools/Apply-NativeContent.ps1
+      - name: Integrate console home, icon and session restore
+        shell: pwsh
+        run: ./tools/Apply-ConsoleUX.ps1
       - name: Publish Windows application
         run: dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish
       - name: Include SDL3 runtime and license
