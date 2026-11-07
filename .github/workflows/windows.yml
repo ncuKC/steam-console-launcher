@@ -14,6 +14,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: Integrate native content and launcher name
+        shell: pwsh
+        run: ./tools/Apply-NativeContent.ps1
       - name: Publish Windows application
         run: dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish
       - name: Include SDL3 runtime and license
@@ -25,6 +28,8 @@ jobs:
           if (!$dll) { throw 'SDL3.dll missing' }
           Copy-Item $dll.FullName publish/SDL3.dll
           Get-ChildItem sdl -Recurse -File | Where-Object { $_.Name -match 'LICENSE|COPYING' } | ForEach-Object { Copy-Item $_.FullName publish/ }
+          'Запускайте _launcher.exe. Сохраняйте все файлы этой папки рядом с ним.' | Set-Content -Encoding utf8 publish/_START-HERE.txt
+          if (!(Test-Path publish/_launcher.exe)) { throw '_launcher.exe missing' }
       - uses: actions/upload-artifact@v4
         with:
           name: SteamConsoleLauncher-win-x64
