@@ -19,10 +19,11 @@ $text=$text.Replace('void ConfigureConsoleView(){if(!consoleReady)return;','void
 [IO.File]::WriteAllText($path,$text,$utf8)
 $path=Join-Path $Root 'src/Gamepad.cs'
 $text=[IO.File]::ReadAllText($path)
-$old='return pressed;}'+"`n"+' public void Dispose'
-if(!$text.Contains($old)){throw 'Controller return not found'}
-$new='if(active){int rightY=SDL_GetGamepadAxis(pad,3);if(rightY < -12000)pressed.Add(101);else if(rightY > 12000)pressed.Add(102);}return pressed;}'+"`n"+' public void Dispose'
-$text=$text.Replace($old,$new)
+$pattern='return pressed;\s*\}\s*(?=public void Dispose\s*\()'
+$matches=[regex]::Matches($text,$pattern)
+if($matches.Count -ne 1){throw "Expected exactly one controller return before Dispose; found $($matches.Count)"}
+$new='if(active){int rightY=SDL_GetGamepadAxis(pad,3);if(rightY < -12000)pressed.Add(101);else if(rightY > 12000)pressed.Add(102);}return pressed;}'+"`n "
+$text=[regex]::Replace($text,$pattern,$new)
 [IO.File]::WriteAllText($path,$text,$utf8)
 $path=Join-Path $Root 'src/NativeDetails.cs'
 $text=[IO.File]::ReadAllText($path)
