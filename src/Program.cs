@@ -8,175 +8,58 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 using Microsoft.Win32;
+using Microsoft.Web.WebView2.Wpf;
+using Microsoft.Web.WebView2.Core;
 namespace ConsoleLauncher;
-public record Game(string Id, string Name, bool Installed);
-public class Program : Application
-{
-    [STAThread] public static void Main() => new Program().Run(new LauncherWindow());
-}
-public class LauncherWindow : Window
-{
-    static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(25) };
-    static readonly string Cache = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SteamConsoleLauncher", "library.json");
-    readonly ListBox list = new();
-    readonly TextBlock title = new(), status = new(), label = new();
-    readonly Image backdrop = new() { Stretch = Stretch.UniformToFill, Opacity = .45 };
-    readonly TextBox search = new();
-    readonly ComboBox filter = new();
-    readonly Button play;
-    List<Game> games = new();
-    bool home = true;
-    static Brush Color(string value) => (Brush)new BrushConverter().ConvertFromString(value)!;
-    public LauncherWindow()
-    {
-        Title = "Steam Console Launcher"; Width = 1440; Height = 900;
-        MinWidth = 1000; MinHeight = 650; Background = Color("#0B1019"); Foreground = Brushes.White;
-        FontFamily = new FontFamily("Segoe UI"); WindowState = WindowState.Maximized;
-        var root = new Grid(); Content = root;
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
-        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var nav = new WrapPanel { Margin = new Thickness(36, 22, 36, 18) };
-        root.Children.Add(nav);
-        nav.Children.Add(new TextBlock { Text = "PLAY / STEAM", FontSize = 22, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 10, 26, 0) });
-        nav.Children.Add(MakeButton("Главная", () => { home = true; Render(); }));
-        nav.Children.Add(MakeButton("Библиотека", () => { home = false; Render(); }));
-        nav.Children.Add(MakeButton("Подключить библиотеку", Connect));
-        nav.Children.Add(MakeButton("Обновить", async () => await Reload()));
-        nav.Children.Add(MakeButton("Магазин", () => Open("https://store.steampowered.com/")));
-        nav.Children.Add(MakeButton("Закрыть", Close));
-        var body = new Grid { Margin = new Thickness(36, 0, 36, 0) }; Grid.SetRow(body, 1); root.Children.Add(body);
-        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(2, GridUnitType.Star) });
-        body.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        body.RowDefinitions.Add(new RowDefinition { Height = new GridLength(3, GridUnitType.Star) });
-        var hero = new Grid { ClipToBounds = true, Background = Color("#151F30") }; body.Children.Add(hero); hero.Children.Add(backdrop);
-        var shade = new Border { Background = new LinearGradientBrush(Colors.Transparent, System.Windows.Media.Color.FromRgb(11, 16, 25), new Point(1, 0), new Point(0, 0)) }; hero.Children.Add(shade);
-        var heroText = new StackPanel { Margin = new Thickness(32), VerticalAlignment = VerticalAlignment.Bottom };
-        hero.Children.Add(heroText);
-        label.Text = "УСТАНОВЛЕННЫЕ ИГРЫ STEAM"; label.Foreground = Color("#71C7FF"); label.FontSize = 13; heroText.Children.Add(label);
-        title.Text = "Ваша игровая коллекция"; title.FontSize = 38; title.FontWeight = FontWeights.SemiBold;
-        title.TextWrapping = TextWrapping.Wrap; title.Margin = new Thickness(0, 10, 0, 18); heroText.Children.Add(title);
-        var buttons = new WrapPanel(); heroText.Children.Add(buttons);
-        play = MakeButton("Выберите игру", Launch, true); buttons.Children.Add(play);
-        buttons.Children.Add(MakeButton("В магазине Steam", () => { if (list.SelectedItem is Game g) Open("https://store.steampowered.com/app/" + g.Id); }));
-        var tools = new WrapPanel { Margin = new Thickness(0, 18, 0, 18) }; Grid.SetRow(tools, 1); body.Children.Add(tools);
-        tools.Children.Add(new TextBlock { Text = "ВАША БИБЛИОТЕКА", FontSize = 18, Margin = new Thickness(0, 8, 24, 0) });
-        search.Width = 260; search.FontSize = 17; search.Padding = new Thickness(12, 6, 12, 6); search.Background = Color("#182334"); search.Foreground = Brushes.White; search.BorderThickness = new Thickness(0); search.ToolTip = "Поиск по названию";
-        search.TextChanged += (_, _) => Render(); tools.Children.Add(search);
-        filter.Items.Add("Все"); filter.Items.Add("Установленные"); filter.Items.Add("Не установленные"); filter.SelectedIndex = 0; filter.FontSize = 16; filter.Width = 180; filter.Margin = new Thickness(12, 0, 0, 0);
-        filter.SelectionChanged += (_, _) => Render(); tools.Children.Add(filter);
-        list.Background = Brushes.Transparent; list.BorderThickness = new Thickness(0);
-        list.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty, ScrollBarVisibility.Disabled);
-        list.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty, ScrollBarVisibility.Auto);
-        var panel = new FrameworkElementFactory(typeof(WrapPanel)); list.ItemsPanel = new ItemsPanelTemplate(panel);
-        var card = new FrameworkElementFactory(typeof(StackPanel)); card.SetValue(FrameworkElement.WidthProperty, 190.0);
-        var image = new FrameworkElementFactory(typeof(Image)); image.SetValue(FrameworkElement.HeightProperty, 240.0); image.SetValue(Image.StretchProperty, Stretch.UniformToFill); image.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding("Id") { Converter = new CoverConverter() }); card.AppendChild(image);
-        var name = new FrameworkElementFactory(typeof(TextBlock)); name.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Name")); name.SetValue(TextBlock.TextWrappingProperty, TextWrapping.Wrap); name.SetValue(TextBlock.ForegroundProperty, Brushes.White); name.SetValue(TextBlock.FontSizeProperty, 15.0); name.SetValue(FrameworkElement.MarginProperty, new Thickness(8, 10, 8, 8)); card.AppendChild(name);
-        list.ItemTemplate = new DataTemplate { VisualTree = card };
-        var style = new Style(typeof(ListBoxItem));
-        style.Setters.Add(new Setter(Control.PaddingProperty, new Thickness(4))); style.Setters.Add(new Setter(Control.MarginProperty, new Thickness(0, 0, 14, 14))); style.Setters.Add(new Setter(Control.BackgroundProperty, Color("#182334")));
-        var trigger = new Trigger { Property = ListBoxItem.IsSelectedProperty, Value = true }; trigger.Setters.Add(new Setter(Control.BackgroundProperty, Color("#287EB0"))); style.Triggers.Add(trigger); list.ItemContainerStyle = style;
-        Grid.SetRow(list, 2); body.Children.Add(list);
-        list.SelectionChanged += (_, _) => Select(); list.MouseDoubleClick += (_, _) => Launch();
-        list.KeyDown += (_, e) => { if (e.Key == Key.Enter) { Launch(); e.Handled = true; } };
-        status.FontSize = 13; status.Foreground = Color("#9AADC2"); status.TextWrapping = TextWrapping.Wrap; status.Margin = new Thickness(36, 12, 36, 18); Grid.SetRow(status, 2); root.Children.Add(status);
-        KeyDown += (_, e) => { if (e.Key == Key.F11) { WindowState = WindowState.Normal; WindowStyle = WindowStyle == WindowStyle.None ? WindowStyle.SingleBorderWindow : WindowStyle.None; WindowState = WindowState.Maximized; } };
-        Loaded += async (_, _) => await Reload();
-    }
-    Button MakeButton(string text, Action action, bool primary = false)
-    {
-        var b = new Button { Content = text, Padding = new Thickness(18, 10, 18, 10), Margin = new Thickness(0, 0, 10, 0), FontSize = 15, Background = Color(primary ? "#70C8FF" : "#1D2B3E"), Foreground = primary ? Brushes.Black : Brushes.White, BorderThickness = new Thickness(0), Cursor = Cursors.Hand };
-        var border = new FrameworkElementFactory(typeof(Border)); border.SetValue(Border.CornerRadiusProperty, new CornerRadius(8)); border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding("Background") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) }); border.SetBinding(Border.PaddingProperty, new System.Windows.Data.Binding("Padding") { RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent) });
-        border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter))); b.Template = new ControlTemplate(typeof(Button)) { VisualTree = border };
-        b.Click += (_, _) => action(); return b;
-    }
-    void Render()
-    {
-        var selected = (list.SelectedItem as Game)?.Id;
-        var shown = games.Where(g => (!home || g.Installed) && (filter.SelectedIndex != 1 || g.Installed) && (filter.SelectedIndex != 2 || !g.Installed) && g.Name.Contains(search.Text.Trim(), StringComparison.OrdinalIgnoreCase)).OrderBy(g => g.Name).ToList();
-        list.ItemsSource = shown;
-        list.SelectedItem = shown.FirstOrDefault(g => g.Id == selected) ?? shown.FirstOrDefault();
-        Select();
-    }
-    void Select()
-    {
-        if (list.SelectedItem is not Game g) { title.Text = "Нет игр для выбранного фильтра"; play.IsEnabled = false; backdrop.Source = null; return; }
-        play.IsEnabled = true; title.Text = g.Name; play.Content = g.Installed ? "Играть" : "Установить через Steam";
-        label.Text = g.Installed ? "УСТАНОВЛЕНО · STEAM" : "В БИБЛИОТЕКЕ · STEAM";
-        var bitmap = new BitmapImage(); bitmap.BeginInit(); bitmap.UriSource = new Uri("https://cdn.akamai.steamstatic.com/steam/apps/" + g.Id + "/library_hero.jpg"); bitmap.EndInit(); backdrop.Source = bitmap;
-    }
-    void Launch() { if (list.SelectedItem is Game g) Open(g.Installed ? "steam://rungameid/" + g.Id : "steam://install/" + g.Id); }
-    void Open(string uri) { try { Process.Start(new ProcessStartInfo(uri) { UseShellExecute = true }); } catch { status.Text = "Не удалось открыть Steam или браузер."; } }
-    async Task Reload()
-    {
-        try
-        {
-            var local = await Task.Run(Scan);
-            List<Game> saved = new();
-            if (File.Exists(Cache)) { try { saved = JsonSerializer.Deserialize<List<Game>>(await File.ReadAllTextAsync(Cache)) ?? new(); } catch (JsonException) { } }
-            games = saved.Concat(local).GroupBy(g => g.Id).Select(group => new Game(group.Key, group.Last().Name, local.Any(g => g.Id == group.Key))).Where(g => g.Id != "228980").ToList();
-            Render(); status.Text = $"В списке: {games.Count} · установлено: {games.Count(g => g.Installed)} · F11 — полный экран. " + (saved.Count == 0 ? "Для всей коллекции нажмите «Подключить библиотеку»." : "Импортированная коллекция из локального кеша; для синхронизации повторите подключение.");
-        }
-        catch { status.Text = "Не удалось прочитать локальную библиотеку. Проверьте доступ к папкам Steam."; }
-    }
-    void Connect()
-    {
-        var dialog = new Window { Owner = this, Title = "Импорт библиотеки Steam", Width = 520, Height = 410, WindowStartupLocation = WindowStartupLocation.CenterOwner, Background = Color("#101A28"), Foreground = Brushes.White };
-        var content = new StackPanel { Margin = new Thickness(24) }; dialog.Content = content;
-        content.Children.Add(new TextBlock { Text = "Введите SteamID64 и личный Steam Web API key. Ключ отправляется только Steam, не сохраняется и не попадает в GitHub. Список игр должен быть доступен по настройкам приватности. Пароль Steam не нужен.", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 16) });
-        content.Children.Add(new TextBlock { Text = "SteamID64 (17 цифр)" }); var id = new TextBox { FontSize = 18, Margin = new Thickness(0, 4, 0, 12) }; content.Children.Add(id);
-        content.Children.Add(new TextBlock { Text = "Steam Web API key" }); var key = new PasswordBox { FontSize = 18, Margin = new Thickness(0, 4, 0, 16) }; content.Children.Add(key);
-        var message = new TextBlock { TextWrapping = TextWrapping.Wrap }; content.Children.Add(message);
-        var import = MakeButton("Импортировать", () => { }); content.Children.Add(import);
-        import.Click += async (_, _) =>
-        {
-            if (!Regex.IsMatch(id.Text.Trim(), "^[0-9]{17}$") || !Regex.IsMatch(key.Password.Trim(), "^[A-Fa-f0-9]{32}$")) { message.Text = "Проверьте SteamID64 и формат ключа."; return; }
-            import.IsEnabled = false; message.Text = "Получение списка игр…";
-            try
-            {
-                var url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=" + Uri.EscapeDataString(key.Password.Trim()) + "&steamid=" + id.Text.Trim() + "&include_appinfo=1&include_played_free_games=1";
-                using var doc = JsonDocument.Parse(await Http.GetStringAsync(url)); var response = doc.RootElement.GetProperty("response");
-                if (!response.TryGetProperty("game_count", out _)) { message.Text = "Steam не вернул список. Проверьте ключ и доступность «Данных об играх» в приватности Steam."; return; }
-                var imported = new List<Game>();
-                if (response.TryGetProperty("games", out var items)) foreach (var item in items.EnumerateArray()) imported.Add(new Game(item.GetProperty("appid").ToString(), item.TryGetProperty("name", out var n) ? n.GetString() ?? "Без названия" : "Без названия", false));
-                Directory.CreateDirectory(Path.GetDirectoryName(Cache)!); await File.WriteAllTextAsync(Cache, JsonSerializer.Serialize(imported)); key.Clear(); home = false; await Reload(); dialog.Close();
-            }
-            catch { message.Text = "Импорт не удался. Проверьте сеть, SteamID и ключ. Существующая библиотека сохранена."; }
-            finally { import.IsEnabled = true; }
-        };
-        dialog.ShowDialog();
-    }
-    static List<Game> Scan()
-    {
-        var steam = Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam", "SteamPath", null) as string ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "Steam");
-        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { Path.Combine(steam, "steamapps") };
-        var file = Path.Combine(steam, "steamapps", "libraryfolders.vdf");
-        if (File.Exists(file)) foreach (Match m in Regex.Matches(File.ReadAllText(file), "\"path\"\\s*\"([^\"]+)\"")) paths.Add(Path.Combine(m.Groups[1].Value.Replace(@"\\", @"\"), "steamapps"));
-        var result = new List<Game>();
-        foreach (var path in paths)
-        {
-            try
-            {
-                if (!Directory.Exists(path)) continue;
-                foreach (var manifest in Directory.GetFiles(path, "appmanifest_*.acf"))
-                {
-                    try
-                    {
-                        var text = File.ReadAllText(manifest);
-                        string Field(string name) => Regex.Match(text, "\"" + name + "\"\\s*\"([^\"]+)\"").Groups[1].Value;
-                        if (uint.TryParse(Field("appid"), out var app) && int.TryParse(Field("StateFlags"), out var flags) && (flags & 4) != 0) result.Add(new Game(app.ToString(), Field("name"), true));
-                    }
-                    catch (IOException) { } catch (UnauthorizedAccessException) { }
-                }
-            }
-            catch (IOException) { } catch (UnauthorizedAccessException) { }
-        }
-        return result;
-    }
-}
-public class CoverConverter : System.Windows.Data.IValueConverter
-{
-    public object Convert(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => new BitmapImage(new Uri("https://cdn.akamai.steamstatic.com/steam/apps/" + value + "/library_600x900.jpg"));
-    public object ConvertBack(object value, Type targetType, object parameter, System.Globalization.CultureInfo culture) => throw new NotSupportedException();
+public record Game(string Id,string Name,bool Installed){public string State=>Installed?"Установлено":"В коллекции";}
+public class Program:Application{[STAThread]public static void Main()=>new Program().Run(new LauncherWindow());}
+public class LauncherWindow:Window{
+ static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamConsoleLauncher");
+ static readonly HttpClient Http=new(){Timeout=TimeSpan.FromSeconds(12)};
+ static readonly SemaphoreSlim Gate=new(4);
+ readonly ListBox list=new(); readonly Image hero=new(){Stretch=Stretch.UniformToFill,Opacity=.65};
+ readonly TextBlock title=new(),label=new(),status=new(),section=new(); readonly TextBox search=new();
+ readonly Grid shell=new(); readonly StackPanel detail=new(); readonly Grid store=new(); readonly WebView2 browser=new(); readonly TextBlock webStatus=new();
+ readonly Button play; readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromMilliseconds(33)};
+ List<Game> games=new(); Gamepad? pad; bool home=true,swapped; int filter,selectionVersion; string page="library";
+ Game? Selected=>list.SelectedItem as Game;
+ static Brush B(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
+ public LauncherWindow(){
+ Title="PLAY — Steam";Width=1440;Height=900;MinWidth=1000;MinHeight=650;Background=B("#0B1018");Foreground=Brushes.White;FontFamily=new FontFamily("Segoe UI");WindowState=WindowState.Maximized;
+ var root=new Grid();Content=root;root.Children.Add(shell);root.Children.Add(detail);root.Children.Add(store);detail.Visibility=store.Visibility=Visibility.Collapsed;
+ shell.Margin=new Thickness(42,24,42,16);foreach(var h in new[]{GridLength.Auto,new GridLength(2,GridUnitType.Star),GridLength.Auto,new GridLength(3,GridUnitType.Star),GridLength.Auto})shell.RowDefinitions.Add(new(){Height=h});
+ var nav=new DockPanel{Margin=new Thickness(0,0,0,24)};shell.Children.Add(nav);var settings=new StackPanel{Orientation=Orientation.Horizontal};DockPanel.SetDock(settings,Dock.Right);nav.Children.Add(settings);settings.Children.Add(Button("Аккаунт",Account));settings.Children.Add(Button("Обновить",async()=>await Reload()));settings.Children.Add(Button("A/B",()=>{swapped=!swapped;status.Text=swapped?"Подтверждение — восточная, отмена — южная кнопка":"Подтверждение — южная, отмена — восточная кнопка";}));
+ var tabs=new StackPanel{Orientation=Orientation.Horizontal};nav.Children.Add(tabs);tabs.Children.Add(new TextBlock{Text="PLAY",FontSize=27,FontWeight=FontWeights.Bold,Margin=new Thickness(0,6,28,0)});tabs.Children.Add(Button("Главная",()=>Tab(true)));tabs.Children.Add(Button("Библиотека",()=>Tab(false)));tabs.Children.Add(Button("Магазин",async()=>await Store("https://store.steampowered.com/")));
+ var banner=new Grid{ClipToBounds=true,Background=B("#162336")};Grid.SetRow(banner,1);shell.Children.Add(banner);banner.Children.Add(hero);banner.Children.Add(new Border{Background=new LinearGradientBrush(Color.FromArgb(250,11,16,24),Color.FromArgb(20,11,16,24),new Point(0,0),new Point(1,0))});
+ var info=new StackPanel{VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(32)};banner.Children.Add(info);label.Foreground=B("#85D1FF");label.FontSize=13;info.Children.Add(label);title.FontSize=42;title.FontWeight=FontWeights.SemiBold;title.MaxWidth=800;title.HorizontalAlignment=HorizontalAlignment.Left;title.TextWrapping=TextWrapping.Wrap;title.Margin=new Thickness(0,12,0,22);info.Children.Add(title);var actions=new StackPanel{Orientation=Orientation.Horizontal};info.Children.Add(actions);play=Button("Играть",Launch,true);actions.Children.Add(play);actions.Children.Add(Button("Подробнее",Details));
+ var tools=new DockPanel{Margin=new Thickness(0,22,0,18)};Grid.SetRow(tools,2);shell.Children.Add(tools);var right=new StackPanel{Orientation=Orientation.Horizontal};DockPanel.SetDock(right,Dock.Right);tools.Children.Add(right);search.Width=250;search.FontSize=17;search.Background=B("#192639");search.Foreground=search.CaretBrush=Brushes.White;search.BorderThickness=new Thickness(0);search.Padding=new Thickness(12,8,12,8);search.ToolTip="Поиск по библиотеке";search.TextChanged+=(_,_)=>Render();right.Children.Add(search);Button? f=null;f=Button("Все",()=>{filter=(filter+1)%3;f!.Content=new[]{"Все","Установленные","Не установленные"}[filter];Render();});f.Margin=new Thickness(12,0,0,0);right.Children.Add(f);section.FontSize=22;section.VerticalAlignment=VerticalAlignment.Center;tools.Children.Add(section);
+ list.Background=Brushes.Transparent;list.BorderThickness=new Thickness(0);list.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,ScrollBarVisibility.Disabled);var panel=new FrameworkElementFactory(typeof(WrapPanel));list.ItemsPanel=new ItemsPanelTemplate(panel);
+ var item=new FrameworkElementFactory(typeof(StackPanel));item.SetValue(FrameworkElement.WidthProperty,176.0);var cover=new FrameworkElementFactory(typeof(Image));cover.SetValue(FrameworkElement.HeightProperty,240.0);cover.SetValue(Image.StretchProperty,Stretch.UniformToFill);cover.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler(CoverLoaded));item.AppendChild(cover);var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.ForegroundProperty,Brushes.White);name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.FontSizeProperty,15.0);name.SetValue(FrameworkElement.MarginProperty,new Thickness(8,10,8,8));item.AppendChild(name);var state=new FrameworkElementFactory(typeof(TextBlock));state.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("State"));state.SetValue(TextBlock.ForegroundProperty,B("#92A9C4"));state.SetValue(FrameworkElement.MarginProperty,new Thickness(8,0,8,8));item.AppendChild(state);list.ItemTemplate=new DataTemplate{VisualTree=item};
+ var frame=new FrameworkElementFactory(typeof(Border));frame.Name="Frame";frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(10));frame.SetValue(Border.BackgroundProperty,B("#172234"));frame.SetValue(Border.BorderBrushProperty,Brushes.Transparent);frame.SetValue(Border.BorderThicknessProperty,new Thickness(3));frame.SetValue(Border.PaddingProperty,new Thickness(4));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));var template=new ControlTemplate(typeof(ListBoxItem)){VisualTree=frame};var selected=new Trigger{Property=ListBoxItem.IsSelectedProperty,Value=true};selected.Setters.Add(new Setter(Border.BorderBrushProperty,B("#7ED3FF"),"Frame"));template.Triggers.Add(selected);var style=new Style(typeof(ListBoxItem));style.Setters.Add(new Setter(Control.TemplateProperty,template));style.Setters.Add(new Setter(Control.MarginProperty,new Thickness(0,0,16,16)));list.ItemContainerStyle=style;Grid.SetRow(list,3);shell.Children.Add(list);list.SelectionChanged+=async(_,_)=>await Select();list.MouseDoubleClick+=(_,_)=>Details();list.KeyDown+=(_,e)=>{if(e.Key==Key.Enter){Details();e.Handled=true;}};
+ status.FontSize=12;status.Foreground=B("#91A6BF");status.TextWrapping=TextWrapping.Wrap;Grid.SetRow(status,4);shell.Children.Add(status);
+ store.RowDefinitions.Add(new(){Height=GridLength.Auto});store.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});var webNav=new DockPanel{Margin=new Thickness(24)};store.Children.Add(webNav);webNav.Children.Add(Button("Вернуться в библиотеку",Back));webStatus.VerticalAlignment=VerticalAlignment.Center;webStatus.TextWrapping=TextWrapping.Wrap;webNav.Children.Add(webStatus);Grid.SetRow(browser,1);store.Children.Add(browser);
+ PreviewKeyDown+=(_,e)=>{if(e.Key==Key.F11){WindowState=WindowState.Normal;WindowStyle=WindowStyle==WindowStyle.None?WindowStyle.SingleBorderWindow:WindowStyle.None;WindowState=WindowState.Maximized;e.Handled=true;}if(e.Key==Key.Escape&&page!="library"){Back();e.Handled=true;}};
+ Loaded+=async(_,_)=>{await Reload();pad=new Gamepad();timer.Tick+=(_,_)=>Poll();timer.Start();};Closed+=(_,_)=>{timer.Stop();pad?.Dispose();browser.Dispose();};
+ }
+ Button Button(string text,Action action,bool primary=false){var b=new Button{Content=text,Padding=new Thickness(20,12,20,12),Margin=new Thickness(0,0,12,0),FontSize=16,Background=B(primary?"#72CBFF":"#202D40"),Foreground=primary?B("#07111D"):Brushes.White,Cursor=Cursors.Hand};var border=new FrameworkElementFactory(typeof(Border));border.Name="Frame";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(10));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);border.SetValue(Border.BorderThicknessProperty,new Thickness(2));foreach(var prop in new[]{"Background","Padding"})border.SetBinding(prop=="Background"?Border.BackgroundProperty:Border.PaddingProperty,new System.Windows.Data.Binding(prop){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));var t=new ControlTemplate(typeof(Button)){VisualTree=border};var focus=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};focus.Setters.Add(new Setter(Border.BorderBrushProperty,Brushes.White,"Frame"));t.Triggers.Add(focus);b.Template=t;b.Click+=(_,_)=>action();return b;}
+ void Show(string p){page=p;shell.Visibility=p=="library"?Visibility.Visible:Visibility.Collapsed;detail.Visibility=p=="details"?Visibility.Visible:Visibility.Collapsed;store.Visibility=p=="store"?Visibility.Visible:Visibility.Collapsed;}
+ void Back(){Show("library");list.Focus();}
+ void Tab(bool h){home=h;filter=0;Show("library");Render();list.Focus();}
+ void Render(){var id=Selected?.Id;var visible=games.Where(g=>(!home||g.Installed)&&(filter!=1||g.Installed)&&(filter!=2||!g.Installed)&&g.Name.Contains(search.Text.Trim(),StringComparison.OrdinalIgnoreCase)).ToList();list.ItemsSource=visible;list.SelectedItem=visible.FirstOrDefault(g=>g.Id==id)??visible.FirstOrDefault();section.Text=home?"Установленные игры":"Библиотека Steam";}
+ async Task Select(){int version=++selectionVersion;hero.Source=null;if(Selected is not Game g){title.Text="Нет игр для выбранного фильтра";play.IsEnabled=false;return;}play.IsEnabled=true;title.Text=g.Name;label.Text=g.State.ToUpperInvariant()+" · STEAM";play.Content=g.Installed?"Играть":"Установить";var image=await Artwork(g.Id,true);if(version==selectionVersion)hero.Source=image;}
+ async void CoverLoaded(object sender,RoutedEventArgs e){if(sender is Image image&&image.DataContext is Game g){var cover=await Artwork(g.Id,false);if(image.DataContext is Game current&&current.Id==g.Id)image.Source=cover;}}
+ void Launch(){if(Selected is not Game g)return;try{Process.Start(new ProcessStartInfo((g.Installed?"steam://rungameid/":"steam://install/")+g.Id){UseShellExecute=true});if(g.Installed)WindowState=WindowState.Minimized;}catch{status.Text="Не удалось открыть Steam.";}}
+ async void Details(){if(Selected is not Game g)return;detail.Children.Clear();detail.Margin=new Thickness(60);detail.Children.Add(Button("Назад",Back));var image=new Image{Height=280,Stretch=Stretch.Uniform,HorizontalAlignment=HorizontalAlignment.Left,Margin=new Thickness(0,24,0,0)};detail.Children.Add(image);detail.Children.Add(new TextBlock{Text=g.Name,FontSize=40,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,20,0,10)});detail.Children.Add(new TextBlock{Text=g.State,Foreground=B("#85D1FF"),FontSize=18});detail.Children.Add(new TextBlock{Text="Описание, отзывы и видео пока доступны только на официальной странице во встроенном магазине.",TextWrapping=TextWrapping.Wrap,FontSize=17,Margin=new Thickness(0,20,0,20)});var actions=new StackPanel{Orientation=Orientation.Horizontal};detail.Children.Add(actions);var launch=Button(g.Installed?"Играть":"Установить",Launch,true);actions.Children.Add(launch);actions.Children.Add(Button("Магазин Steam",async()=>await Store("https://store.steampowered.com/app/"+g.Id+"/")));Show("details");launch.Focus();image.Source=await Artwork(g.Id,true);}
+ static bool Allowed(string uri)=>Uri.TryCreate(uri,UriKind.Absolute,out var u)&&u.Scheme=="https"&&(u.Host=="steampowered.com"||u.Host.EndsWith(".steampowered.com",StringComparison.OrdinalIgnoreCase)||u.Host=="steamcommunity.com"||u.Host.EndsWith(".steamcommunity.com",StringComparison.OrdinalIgnoreCase));
+ async Task Store(string url){Show("store");try{if(browser.CoreWebView2==null){var env=await CoreWebView2Environment.CreateAsync(null,Path.Combine(Root,"webview"));await browser.EnsureCoreWebView2Async(env);browser.CoreWebView2.NewWindowRequested+=(_,e)=>{e.Handled=true;if(Allowed(e.Uri))browser.CoreWebView2.Navigate(e.Uri);else webStatus.Text="Внешний переход заблокирован. Сторонние платёжные страницы пока не поддерживаются.";};browser.CoreWebView2.NavigationStarting+=(_,e)=>{if(!Allowed(e.Uri)){e.Cancel=true;webStatus.Text="Переход за пределы Steam заблокирован.";}};}browser.CoreWebView2.Navigate(url);webStatus.Text="Steam · B — назад · крестовина — прокрутка · мышь/клавиатура для веб-форм";}catch{webStatus.Text="Не удалось открыть магазин. Проверьте наличие WebView2 Runtime. Внешний браузер автоматически не открывается.";}}
+ async Task Reload(){try{var local=await Task.Run(Scan);var saved=new List<Game>();var file=Path.Combine(Root,"library.json");if(File.Exists(file))try{saved=JsonSerializer.Deserialize<List<Game>>(await File.ReadAllTextAsync(file))??new();}catch(JsonException){}var ids=local.Select(g=>g.Id).ToHashSet();games=saved.Concat(local).Where(g=>g.Id!="228980").GroupBy(g=>g.Id).Select(g=>new Game(g.Key,g.Last().Name,ids.Contains(g.Key))).OrderBy(g=>g.Name).ToList();Render();status.Text=$"В приложении: {games.Count} · установлено: {games.Count(g=>g.Installed)} · A — подробнее · X — запуск · LB/RB — раздел · F11 — полный экран. "+(File.Exists(file)?"Импорт сохранён локально.":"Видны только установленные игры. Аккаунт → импорт коллекции.");}catch{status.Text="Не удалось прочитать библиотеку.";}}
+ async void Account(){timer.Stop();try{var d=new Window{Owner=this,Title="Импорт коллекции Steam",Width=540,Height=400,WindowStartupLocation=WindowStartupLocation.CenterOwner};var box=new StackPanel{Margin=new Thickness(24)};d.Content=box;box.Children.Add(new TextBlock{Text="Введите SteamID64 и личный Steam Web API key. Ключ не сохраняется; отправляется только Steam. Данные об играх должны быть доступны. Это импорт, а не вход.",TextWrapping=TextWrapping.Wrap});box.Children.Add(new TextBlock{Text="SteamID64"});var id=new TextBox{FontSize=18};box.Children.Add(id);box.Children.Add(new TextBlock{Text="API key"});var key=new PasswordBox{Padding=new Thickness(8)};box.Children.Add(key);var msg=new TextBlock{TextWrapping=TextWrapping.Wrap};box.Children.Add(msg);var button=new Button{Content="Импортировать",Margin=new Thickness(0,16,0,0)};box.Children.Add(button);button.Click+=async(_,_)=>{button.IsEnabled=false;try{if(!Regex.IsMatch(id.Text.Trim(),"^[0-9]{17}$")||!Regex.IsMatch(key.Password.Trim(),"^[a-fA-F0-9]{32}$"))throw new Exception();using var doc=JsonDocument.Parse(await Http.GetStringAsync("https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key="+Uri.EscapeDataString(key.Password.Trim())+"&steamid="+id.Text.Trim()+"&include_appinfo=1&include_played_free_games=1"));var response=doc.RootElement.GetProperty("response");if(!response.TryGetProperty("game_count",out _))throw new Exception();var imported=new List<Game>();if(response.TryGetProperty("games",out var items))foreach(var item in items.EnumerateArray())imported.Add(new(item.GetProperty("appid").ToString(),item.TryGetProperty("name",out var n)?n.GetString()??"Без названия":"Без названия",false));Directory.CreateDirectory(Root);var file=Path.Combine(Root,"library.json");await File.WriteAllTextAsync(file+".tmp",JsonSerializer.Serialize(imported));File.Move(file+".tmp",file,true);key.Clear();home=false;await Reload();d.Close();}catch{msg.Text="Импорт не удался. Проверьте SteamID64, ключ, сеть и приватность данных об играх.";}finally{button.IsEnabled=true;}};d.ShowDialog();await Task.CompletedTask;}finally{timer.Start();}}
+ static List<Game> Scan(){var steam=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","SteamPath",null)as string??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),"Steam");var paths=new HashSet<string>(StringComparer.OrdinalIgnoreCase){Path.Combine(steam,"steamapps")};var file=Path.Combine(steam,"steamapps","libraryfolders.vdf");if(File.Exists(file))foreach(Match m in Regex.Matches(File.ReadAllText(file),"\"path\"\\s*\"([^\"]+)\""))paths.Add(Path.Combine(m.Groups[1].Value.Replace(@"\\",@"\"),"steamapps"));var result=new List<Game>();foreach(var path in paths)try{if(!Directory.Exists(path))continue;foreach(var manifest in Directory.GetFiles(path,"appmanifest_*.acf"))try{var text=File.ReadAllText(manifest);string Field(string name)=>Regex.Match(text,"\""+name+"\"\\s*\"([^\"]+)\"").Groups[1].Value;if(uint.TryParse(Field("appid"),out var id)&&int.TryParse(Field("StateFlags"),out var flags)&&(flags&4)!=0)result.Add(new(id.ToString(),Field("name"),true));}catch(IOException){}catch(UnauthorizedAccessException){}}catch(IOException){}catch(UnauthorizedAccessException){}return result;}
+ static readonly System.Collections.Concurrent.ConcurrentDictionary<string,Lazy<Task<BitmapImage?>>> Images=new();
+ static Task<BitmapImage?> Artwork(string id,bool hero)=>Images.GetOrAdd(id+(hero?"h":"c"),_=>new Lazy<Task<BitmapImage?>>(()=>LoadArt(id,hero))).Value;
+ static BitmapImage Decode(byte[] bytes,bool hero){using var stream=new MemoryStream(bytes);var b=new BitmapImage();b.BeginInit();b.CacheOption=BitmapCacheOption.OnLoad;b.DecodePixelWidth=hero?1600:400;b.StreamSource=stream;b.EndInit();b.Freeze();return b;}
+ static async Task<BitmapImage?> LoadArt(string id,bool hero){await Gate.WaitAsync();try{var folder=Path.Combine(Root,"artwork");var file=Path.Combine(folder,id+(hero?"_hero":"_cover")+".bin");if(File.Exists(file))try{var bytes=await File.ReadAllBytesAsync(file);return await Task.Run(()=>Decode(bytes,hero));}catch{try{File.Delete(file);}catch{}}var names=hero?new[]{"library_hero.jpg","header.jpg"}:new[]{"library_600x900.jpg","library_600x900_2x.jpg","header.jpg","library_hero.jpg"};foreach(var name in names)foreach(var host in new[]{"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"})try{var bytes=await Http.GetByteArrayAsync(host+"/steam/apps/"+id+"/"+name);var b=await Task.Run(()=>Decode(bytes,hero));try{Directory.CreateDirectory(folder);await File.WriteAllBytesAsync(file,bytes);}catch{}return b;}catch{}return null;}finally{Gate.Release();}}
+ async void Poll(){if(pad==null)return;foreach(int b in pad.Tick(IsActive&&WindowState!=WindowState.Minimized)){int confirm=swapped?1:0,back=swapped?0:1;if(b==back){Back();continue;}if(page=="store"){if(browser.CoreWebView2!=null&&(b==11||b==12))try{await browser.ExecuteScriptAsync("window.scrollBy(0,"+(b==11?"-350":"350")+")");}catch{}continue;}if(b==9||b==10){Tab(b==9);continue;}if(b==3){Show("library");search.Focus();continue;}if(b==2){Launch();continue;}if(b==confirm){if(Keyboard.FocusedElement is Button button)button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));else if(page=="details")Launch();else Details();continue;}if(b>=11&&b<=14){if(page=="library"&&list.IsKeyboardFocusWithin){int columns=Math.Max(1,(int)(list.ActualWidth/206));int delta=b==11?-columns:b==12?columns:b==13?-1:1;list.SelectedIndex=Math.Clamp(list.SelectedIndex+delta,0,Math.Max(0,list.Items.Count-1));if(list.SelectedItem!=null)list.ScrollIntoView(list.SelectedItem);}else{var dir=b==11?FocusNavigationDirection.Up:b==12?FocusNavigationDirection.Down:b==13?FocusNavigationDirection.Left:FocusNavigationDirection.Right;(Keyboard.FocusedElement as UIElement)?.MoveFocus(new TraversalRequest(dir));}}}}
 }

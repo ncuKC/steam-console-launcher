@@ -8,14 +8,23 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - name: Publish portable application
-        run: dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+      - name: Publish Windows application
+        run: dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish
+      - name: Include SDL3 runtime and license
+        shell: pwsh
+        run: |
+          Invoke-WebRequest 'https://libsdl.org/release/SDL3-3.2.26-win32-x64.zip' -OutFile sdl.zip
+          Expand-Archive sdl.zip -DestinationPath sdl
+          $dll = Get-ChildItem sdl -Recurse -Filter SDL3.dll | Select-Object -First 1
+          if (!$dll) { throw 'SDL3.dll missing' }
+          Copy-Item $dll.FullName publish/SDL3.dll
+          Get-ChildItem sdl -Recurse -File | Where-Object { $_.Name -match 'LICENSE|COPYING' } | ForEach-Object { Copy-Item $_.FullName publish/ }
       - uses: actions/upload-artifact@v4
         with:
           name: SteamConsoleLauncher-win-x64
