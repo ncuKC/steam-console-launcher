@@ -20,6 +20,9 @@ jobs:
       - name: Integrate console home, icon and session restore
         shell: pwsh
         run: ./tools/Apply-ConsoleUX.ps1
+      - name: Integrate navigation and formatting fixes
+        shell: pwsh
+        run: ./tools/Apply-Usability.ps1
       - name: Publish Windows application
         run: dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish
       - name: Include SDL3 runtime and license
