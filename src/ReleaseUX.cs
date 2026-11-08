@@ -12,10 +12,10 @@ public partial class LauncherWindow{
  string BuildVersion=>Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion??"development";
  void InitReleaseUX(){
   if(releaseReady)return;releaseReady=true;
-  Loaded+=async(_,_)=>await CheckLauncherUpdates(false);
+  Dispatcher.BeginInvoke(new Action(async()=>await CheckLauncherUpdates(false)));
   PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape&&menuVisible){CloseReleaseMenu();e.Handled=true;}};
   var version=new TextBlock{Text=BuildVersion,FontSize=12,Opacity=.65,Margin=new Thickness(12,0,12,12),VerticalAlignment=VerticalAlignment.Center};
-  if(shell.Children[0] is DockPanel nav&&nav.Children[0] is StackPanel settings){settings.Children.Insert(0,version);foreach(var b in settings.Children.OfType<System.Windows.Controls.Button>())if((b.Content as string)=="Меню")b.Click+=(_,_)=>{menuVisible=true;};}
+  if(shell.Children[0] is DockPanel nav&&nav.Children[0] is StackPanel settings)settings.Children.Insert(0,version);
  }
  void OpenReleaseMenu(){if(menuVisible){CloseReleaseMenu();return;}menuReturnPage=page;menuReturnFocus=Keyboard.FocusedElement;OpenConsoleSettings();menuVisible=true;}
  void CloseReleaseMenu(){menuVisible=false;Show(menuReturnPage);if(menuReturnFocus is UIElement target&&target.IsVisible)target.Focus();else if(page=="library")FocusSelected();}
@@ -24,10 +24,10 @@ public partial class LauncherWindow{
   if(menuVisible&&code==(swapped?0:1)){CloseReleaseMenu();return true;}
   if(code==9||code==10){menuVisible=false;int current=page=="store"?2:home?0:1;int next=(current+(code==9?2:1))%3;if(next==2)_=Store("https://store.steampowered.com/");else Tab(next==0);return true;}
   if(page!="library"||menuVisible)return false;
-  if(code==11&&list.IsKeyboardFocusWithin){int columns=home?list.Items.Count:Math.Max(1,(int)(list.ActualWidth/206));if(home||list.SelectedIndex<columns){play.Focus();return true;}}
+  var top=shell.Children[0] as DockPanel;
+  var buttons=top?.Children.OfType<StackPanel>().SelectMany(g=>g.Children.OfType<System.Windows.Controls.Button>()).ToList();
+  if(code==11&&list.IsKeyboardFocusWithin){int columns=home?list.Items.Count:Math.Max(1,(int)(list.ActualWidth/206));if(home||list.SelectedIndex<columns){if(home)play.Focus();else buttons?.FirstOrDefault(b=>(b.Content as string)=="Библиотека")?.Focus();return true;}}
   if(Keyboard.FocusedElement is System.Windows.Controls.Button focused){
-   var top=shell.Children[0] as DockPanel;
-   var buttons=top?.Children.OfType<StackPanel>().SelectMany(g=>g.Children.OfType<System.Windows.Controls.Button>()).ToList();
    if(buttons!=null&&buttons.Contains(focused)){
     var ordered=buttons.Where(b=>(b.Content as string)!="Меню").Concat(buttons.Where(b=>(b.Content as string)=="Меню")).ToList();int index=ordered.IndexOf(focused);
     if(code==13||code==14){ordered[Math.Clamp(index+(code==13?-1:1),0,ordered.Count-1)].Focus();return true;}
@@ -45,7 +45,7 @@ public partial class LauncherWindow{
  }
  async Task CheckLauncherUpdates(bool showMenu){
   if(updateBusy)return;updateBusy=true;
-  try{updateStatus.Text="Проверка обновлений…";updateManager??=new UpdateManager(new GithubSource("https://github.com/ncuKC/steam-console-launcher-updates",null,false));if(!updateManager.IsInstalled){updateStatus.Text="Для обновлений установите сборку через Setup.exe. Текущий запуск — без установленного обновлятора.";return;}availableUpdate=await updateManager.CheckForUpdatesAsync();updateStatus.Text=availableUpdate==null?"Установлена актуальная версия.":"Доступна версия "+availableUpdate.TargetFullRelease.Version+". Обновление применяется только по вашей команде.";}
+  try{updateStatus.Text="Проверка обновлений…";updateManager??=new UpdateManager(new GithubSource("https://github.com/ncuKC/steam-console-launcher",null,false));if(!updateManager.IsInstalled){updateStatus.Text="Для обновлений установите сборку через Setup.exe. Текущий запуск — без установленного обновлятора.";return;}availableUpdate=await updateManager.CheckForUpdatesAsync();updateStatus.Text=availableUpdate==null?"Установлена актуальная версия.":"Доступна версия "+availableUpdate.TargetFullRelease.Version+". Обновление применяется только по вашей команде.";}
   catch(Exception ex){updateStatus.Text="Не удалось проверить обновления. Приложение продолжает работу. "+ex.Message;}
   finally{updateBusy=false;}
  }
