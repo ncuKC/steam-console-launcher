@@ -3,12 +3,20 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      publish_public:
+        description: 'Publish installer and update packages publicly (requires UPDATES_REPO_TOKEN)'
+        type: boolean
+        default: false
 permissions:
   contents: read
+concurrency:
+  group: windows-release
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -23,8 +31,19 @@ jobs:
       - name: Integrate navigation and formatting fixes
         shell: pwsh
         run: ./tools/Apply-Usability.ps1
+      - name: Integrate controller navigation and updater
+        shell: pwsh
+        run: ./tools/Apply-ReleaseUX.ps1
+      - name: Set build version
+        shell: pwsh
+        run: |
+          $version = "0.2.${{ github.run_number }}"
+          "APP_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Publish Windows application
-        run: dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish
+        shell: pwsh
+        run: |
+          dotnet publish src/Launcher.csproj -c Release -r win-x64 --self-contained true -o publish -p:Version=$env:APP_VERSION -p:InformationalVersion="$env:APP_VERSION+${{ github.sha }}" -p:IncludeSourceRevisionInInformationalVersion=false
+          if ($LASTEXITCODE -ne 0) { throw 'dotnet publish failed' }
       - name: Include SDL3 runtime and license
         shell: pwsh
         run: |
@@ -34,11 +53,31 @@ jobs:
           if (!$dll) { throw 'SDL3.dll missing' }
           Copy-Item $dll.FullName publish/SDL3.dll
           Get-ChildItem sdl -Recurse -File | Where-Object { $_.Name -match 'LICENSE|COPYING' } | ForEach-Object { Copy-Item $_.FullName publish/ }
-          'Запускайте _launcher.exe. Сохраняйте все файлы этой папки рядом с ним.' | Set-Content -Encoding utf8 publish/_START-HERE.txt
+          'Для автообновлений используйте Setup.exe из пакета установщика.' | Set-Content -Encoding utf8 publish/_START-HERE.txt
           if (!(Test-Path publish/_launcher.exe)) { throw '_launcher.exe missing' }
+      - name: Package installer and updates
+        shell: pwsh
+        run: |
+          dotnet tool install --global vpk --version 1.2.161
+          if ($LASTEXITCODE -ne 0) { throw 'vpk install failed' }
+          vpk pack --packId SteamConsoleLauncher --packVersion $env:APP_VERSION --packDir publish --mainExe _launcher.exe --outputDir Releases
+          if ($LASTEXITCODE -ne 0) { throw 'vpk pack failed' }
+          if (!(Get-ChildItem Releases -Filter '*Setup.exe')) { throw 'Installer missing' }
+          if (!(Get-ChildItem Releases -Filter 'releases.*.json')) { throw 'Update feed missing' }
+          if (!(Get-ChildItem Releases -Filter '*full.nupkg')) { throw 'Update package missing' }
       - uses: actions/upload-artifact@v4
         with:
-          name: SteamConsoleLauncher-win-x64
-          path: publish/
-          retention-days: 7
+          name: SteamConsoleLauncher-Setup-${{ env.APP_VERSION }}
+          path: Releases/
+          retention-days: 14
           if-no-files-found: error
+      - name: Publish public release only on explicit manual request
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_public
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.UPDATES_REPO_TOKEN }}
+        run: |
+          if (!$env:GH_TOKEN) { throw 'Configure UPDATES_REPO_TOKEN with Contents write permission only for steam-console-launcher-updates. Never embed it in the application.' }
+          $files = @(Get-ChildItem Releases -File | ForEach-Object { $_.FullName })
+          gh release create "v$env:APP_VERSION" @files --repo ncuKC/steam-console-launcher-updates --title "Steam Console Launcher $env:APP_VERSION" --notes "Установщик и пакеты обновления. Версия $env:APP_VERSION. Windows x64."
+          if ($LASTEXITCODE -ne 0) { throw 'Public release failed' }
