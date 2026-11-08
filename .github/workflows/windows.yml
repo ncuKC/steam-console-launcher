@@ -65,7 +65,7 @@ jobs:
           retention-days: 14
           if-no-files-found: error
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.publish_public
+    if: (github.event_name == 'workflow_dispatch' && inputs.publish_public) || (github.event_name == 'push' && contains(github.event.head_commit.message, '[release]'))
     needs: build
     runs-on: windows-latest
     permissions:
@@ -84,5 +84,5 @@ jobs:
           $version = '0.2.${{ github.run_number }}'
           $files = @(Get-ChildItem Releases -File | ForEach-Object { $_.FullName })
           if (!$files.Count) { throw 'No release assets found' }
-          gh release create "v$version" @files --repo $env:GH_REPO --target '${{ github.sha }}' --title "Steam Console Launcher $version" --notes "Windows x64. Установите Setup.exe для обновлений из лаунчера. Сборка ${{ github.sha }}."
+          gh release create "v$version" @files --repo $env:GH_REPO --target '${{ github.sha }}' --title "Steam Console Launcher $version" --notes "Windows x64. Изменения: экранная клавиатура поиска RU/EN с управлением геймпадом; опциональный автозапуск при входе в Windows; обновления из основного репозитория. Функциональные проверки на устройстве ещё не завершены. Установите Setup.exe для обновлений из лаунчера. Сборка ${{ github.sha }}."
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
