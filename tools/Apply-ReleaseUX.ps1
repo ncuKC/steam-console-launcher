@@ -23,3 +23,4 @@ $text=[regex]::Replace($text,$pattern,' void ConfigureConsoleView(){if(!consoleR
 $path=Join-Path $Root 'src/Launcher.csproj'
 [xml]$xml=[IO.File]::ReadAllText($path)
 $group=$xml.CreateElement('ItemGroup');$package=$xml.CreateElement('PackageReference');$package.SetAttribute('Include','Velopack');$package.SetAttribute('Version','1.2.161');[void]$group.AppendChild($package);[void]$xml.Project.AppendChild($group);$xml.Save($path)
+& (Join-Path $PSScriptRoot 'Apply-FixPack.ps1') -Root $Root
