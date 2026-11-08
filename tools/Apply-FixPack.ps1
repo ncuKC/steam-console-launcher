@@ -6,7 +6,9 @@ Patch 'src/LayoutPolish.cs' 'layoutPolished=true;InitStandaloneUX();' 'layoutPol
 Patch 'src/LayoutPolish.cs' 'new GridLength(330)' 'new GridLength(356)'
 Patch 'src/LayoutPolish.cs' 'caption.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);' 'caption.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);caption.SetValue(FrameworkElement.HeightProperty,44.0);caption.SetValue(TextBlock.LineHeightProperty,22.0);caption.SetBinding(FrameworkElement.ToolTipProperty,new Binding("Name"));'
 Patch 'src/LayoutPolish.cs' 'style.Setters.Add(new Setter(Control.TemplateProperty,template));' 'style.Setters.Add(new Setter(Control.TemplateProperty,template));style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,null));'
-Patch 'src/Program.cs' 'if(RouteReleaseInput(b))continue;' 'if(RecoverPadFocus(b))continue;if(RouteReleaseInput(b))continue;'
+Patch 'src/LayoutPolish.cs' 'sceneReady=true;ConfigureScene();' 'sceneReady=true;ConfigureScene();InitConsoleNavigation();'
+Patch 'src/Program.cs' 'if(RouteReleaseInput(b))continue;' 'if(RouteConsoleInput(b))continue;if(RouteReleaseInput(b))continue;'
+Patch 'src/Gamepad.cs' 'IntPtr pad;bool ready;' '[DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern int SDL_GetGamepadButtonLabel(IntPtr gamepad,int button);public string ButtonLabel(int code){int label=pad==IntPtr.Zero?0:SDL_GetGamepadButtonLabel(pad,code);return label switch{1=>"A",2=>"B",3=>"X",4=>"Y",5=>"×",6=>"○",7=>"□",8=>"△",_=>new[]{"A","B","X","Y"}[Math.Clamp(code,0,3)]};}IntPtr pad;bool ready;'
 $file=Join-Path $Root 'src/ConsoleUX.cs';$text=[IO.File]::ReadAllText($file)
 $pattern='(?s) static void ScaleCard\(.*?(?=\r?\n void OpenConsoleSettings)'
 if([regex]::Matches($text,$pattern).Count -ne 1){throw 'Expected one ScaleCard method'}
@@ -19,5 +21,6 @@ Patch 'src/NativeDetails.cs' 'readonly StackPanel body=new();' 'readonly StackPa
 Patch 'src/NativeDetails.cs' 'FontSize=size,Foreground=Brushes.White' 'FontSize=Math.Max(size,23),LineHeight=Math.Max(size,23)*1.5,Foreground=Brushes.White'
 Patch 'src/NativeDetails.cs' 'foreach(var r in reviews.EnumerateArray()){' 'var reviewGrid=new WrapPanel();body.Children.Add(reviewGrid);foreach(var r in reviews.EnumerateArray()){'
 $old='Text(r.TryGetProperty("voted_up",out var up)&&up.GetBoolean()?"Рекомендует":"Не рекомендует",16);var s=Str(r,"review");Text(s.Length>4000?s[..4000]+"…":s,17);'
-$new='reviewGrid.Children.Add(ReviewCards.Make(r,id));'
-Patch 'src/NativeDetails.cs' $old $new
+Patch 'src/NativeDetails.cs' $old 'reviewGrid.Children.Add(ReviewCards.Make(r,id));'
+$old='try{Process.Start(new ProcessStartInfo("steam://openurl/https://steamcommunity.com/profiles/"+steamid+"/recommended/"+appid+"/"){UseShellExecute=true});}catch{}'
+Patch 'src/ConsoleFixPack.cs' $old 'ReviewDiscussion.Open(steamid,appid);'
