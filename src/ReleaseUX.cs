@@ -16,6 +16,7 @@ public partial class LauncherWindow{
   PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape&&menuVisible){CloseReleaseMenu();e.Handled=true;}};
   var version=new TextBlock{Text=BuildVersion,FontSize=12,Opacity=.65,Margin=new Thickness(12,0,12,12),VerticalAlignment=VerticalAlignment.Center};
   if(shell.Children[0] is DockPanel nav&&nav.Children[0] is StackPanel settings)settings.Children.Insert(0,version);
+  InitSteamAuth();
  }
  void OpenReleaseMenu(){if(menuVisible){CloseReleaseMenu();return;}menuReturnPage=page;menuReturnFocus=Keyboard.FocusedElement;OpenConsoleSettings();menuVisible=true;}
  void CloseReleaseMenu(){menuVisible=false;Show(menuReturnPage);if(menuReturnFocus is UIElement target&&target.IsVisible)target.Focus();else if(page=="library")FocusSelected();}
@@ -38,6 +39,7 @@ public partial class LauncherWindow{
   return false;
  }
  void AddReleaseMenu(){
+  AddSteamAuthMenu();
   detail.Children.Add(new TextBlock{Text="Версия: "+BuildVersion,FontSize=16,Margin=new Thickness(0,0,0,12)});
   if(updateStatus.Parent is Panel old)old.Children.Remove(updateStatus);detail.Children.Add(updateStatus);
   detail.Children.Add(Button("Проверить обновления лаунчера",async()=>await CheckLauncherUpdates(true)));
