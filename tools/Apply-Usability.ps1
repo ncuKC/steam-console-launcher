@@ -25,16 +25,3 @@ if($matches.Count -ne 1){throw "Expected exactly one controller return before Di
 $new='if(active){int rightY=SDL_GetGamepadAxis(pad,3);if(rightY < -12000)pressed.Add(101);else if(rightY > 12000)pressed.Add(102);}return pressed;}'+"`n "
 $text=[regex]::Replace($text,$pattern,$new)
 [IO.File]::WriteAllText($path,$text,$utf8)
-$path=Join-Path $Root 'src/NativeDetails.cs'
-$text=[IO.File]::ReadAllText($path)
-$text=$text.Replace('public sealed class NativeDetails:Grid,IDisposable{','public sealed class NativeDetails:Grid,IDisposable{'+"`n"+' readonly ScrollViewer scroll; public bool HandlePad(int code){if(viewer.Visibility==Visibility.Visible){if(code==13){Step(-1);return true;}if(code==14){Step(1);return true;}return code==101||code==102;}if(code==101||code==102){scroll.ScrollToVerticalOffset(scroll.VerticalOffset+(code==101?-24:24));return true;}return false;}')
-if(!$text.Contains('var scroll=new ScrollViewer')){throw 'Details scroll not found'}
-$text=$text.Replace('var scroll=new ScrollViewer','scroll=new ScrollViewer')
-$text=$text.Replace('Loaded+=async(_,_)=>{','PreviewMouseWheel+=(_,e)=>{if(viewer.Visibility==Visibility.Visible)Step(e.Delta>0?-1:1);else scroll.ScrollToVerticalOffset(scroll.VerticalOffset-e.Delta);e.Handled=true;};'+"`n"+'  Loaded+=async(_,_)=>{')
-$pattern='(?m)^ static Button NativeButton\(string text,Action action\)\{[^\r\n]*\}'
-if([regex]::Matches($text,$pattern).Count -ne 1){throw 'Native button factory not found'}
-$text=[regex]::Replace($text,$pattern,' static Button NativeButton(string text,Action action)=>UiKit.Make(text,action);')
-$old='Text(Plain(Str(data,"detailed_description")));'
-if(!$text.Contains($old)){throw 'Description output not found'}
-$text=$text.Replace($old,'body.Children.Add(UiKit.Description(Str(data,"detailed_description")));')
-[IO.File]::WriteAllText($path,$text,$utf8)
