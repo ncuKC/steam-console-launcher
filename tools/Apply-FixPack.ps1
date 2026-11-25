@@ -3,9 +3,6 @@ $ErrorActionPreference='Stop'
 $utf8=New-Object System.Text.UTF8Encoding($false)
 function Patch([string]$Relative,[string]$Old,[string]$New){$file=Join-Path $Root $Relative;$text=[IO.File]::ReadAllText($file);if(!$text.Contains($Old)){throw "FixPack fragment missing in $Relative : $Old"};[IO.File]::WriteAllText($file,$text.Replace($Old,$New),$utf8)}
 Patch 'src/LayoutPolish.cs' 'layoutPolished=true;InitStandaloneUX();' 'layoutPolished=true;InitStandaloneUX();InitFixPack();'
-Patch 'src/LayoutPolish.cs' 'new GridLength(330)' 'new GridLength(356)'
-Patch 'src/LayoutPolish.cs' 'caption.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);' 'caption.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);caption.SetValue(FrameworkElement.HeightProperty,44.0);caption.SetValue(TextBlock.LineHeightProperty,22.0);caption.SetBinding(FrameworkElement.ToolTipProperty,new Binding("Name"));'
-Patch 'src/LayoutPolish.cs' 'style.Setters.Add(new Setter(Control.TemplateProperty,template));' 'style.Setters.Add(new Setter(Control.TemplateProperty,template));style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,null));'
 Patch 'src/LayoutPolish.cs' 'sceneReady=true;ConfigureScene();' 'sceneReady=true;ConfigureScene();InitConsoleNavigation();'
 Patch 'src/Program.cs' 'if(RouteReleaseInput(b))continue;' 'if(RouteConsoleInput(b))continue;if(RouteReleaseInput(b))continue;'
 Patch 'src/Gamepad.cs' 'IntPtr pad;bool ready;' '[DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern int SDL_GetGamepadButtonLabel(IntPtr gamepad,int button);public string ButtonLabel(int code){int label=pad==IntPtr.Zero?0:SDL_GetGamepadButtonLabel(pad,code);return label switch{1=>"A",2=>"B",3=>"X",4=>"Y",5=>"×",6=>"○",7=>"□",8=>"△",_=>new[]{"A","B","X","Y"}[Math.Clamp(code,0,3)]};}IntPtr pad;bool ready;'
