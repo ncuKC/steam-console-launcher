@@ -23,7 +23,7 @@ public partial class LauncherWindow{
  bool RouteReleaseInput(int code){
   if(code==6){OpenReleaseMenu();return true;}
   if(menuVisible&&code==(swapped?0:1)){CloseReleaseMenu();return true;}
-  if(code==9||code==10){menuVisible=false;int current=page=="store"?2:home?0:1;int next=(current+(code==9?2:1))%3;if(next==2)_=Store("https://store.steampowered.com/");else Tab(next==0);return true;}
+  if(code==9||code==10){menuVisible=false;int current=page=="store"||page=="native_store"?2:home?0:1;int next=(current+(code==9?2:1))%3;if(next==2)OpenNativeStore();else Tab(next==0);return true;}
   if(page!="library"||menuVisible)return false;
   var top=shell.Children[0] as DockPanel;
   var buttons=top?.Children.OfType<StackPanel>().SelectMany(g=>g.Children.OfType<System.Windows.Controls.Button>()).ToList();

@@ -25,7 +25,7 @@ public partial class LauncherWindow{
   var clock=new TextBlock{FontSize=19,Foreground=B("#C6C2BC"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(24,0,0,16),Text=DateTime.Now.ToString("HH:mm")};settings.Children.Add(clock);
   sceneClock.Tick+=(_,_)=>clock.Text=DateTime.Now.ToString("HH:mm");sceneClock.Start();Closed+=(_,_)=>sceneClock.Stop();
   var tabs=new StackPanel{Orientation=Orientation.Horizontal};nav.Children.Add(tabs);
-  tabs.Children.Add(SceneHint("LB"));tabs.Children.Add(SceneNav("Главная",()=>Tab(true)));tabs.Children.Add(SceneNav("Библиотека",()=>Tab(false)));tabs.Children.Add(SceneNav("Магазин",async()=>await Store("https://store.steampowered.com/")));tabs.Children.Add(SceneHint("RB"));
+  tabs.Children.Add(SceneHint("LB"));tabs.Children.Add(SceneNav("Главная",()=>Tab(true)));tabs.Children.Add(SceneNav("Библиотека",()=>Tab(false)));tabs.Children.Add(SceneNav("Магазин",OpenNativeStore));tabs.Children.Add(SceneHint("RB"));
   var spotlight=new Grid{VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Left,MaxWidth=900};Grid.SetRow(spotlight,1);shell.Children.Add(spotlight);
   var copy=new StackPanel();spotlight.Children.Add(copy);label.FontSize=14;label.Foreground=B("#D9A86C");label.Margin=new Thickness(0,0,0,14);copy.Children.Add(label);
   title.FontSize=62;title.LineHeight=68;title.FontWeight=FontWeights.SemiBold;title.MaxWidth=900;title.MaxHeight=144;title.TextWrapping=TextWrapping.Wrap;title.TextTrimming=TextTrimming.CharacterEllipsis;title.Margin=new Thickness(0,0,0,30);copy.Children.Add(title);
