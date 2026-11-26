@@ -8,7 +8,10 @@ public partial class LauncherWindow{
  internal void InitXboxStyle(){
   if(xboxStyleReady)return;xboxStyleReady=true;
   detail.LayoutUpdated+=(_,_)=>StyleLauncherMenu();
+  store.IsVisibleChanged+=(_,_)=>{if(store.IsVisible)SetWebZoom();};
+  browser.NavigationCompleted+=(_,_)=>SetWebZoom();
  }
+ void SetWebZoom(){try{browser.ZoomFactor=1.6;}catch{}}
  void StyleLauncherMenu(){
   if(xboxStyling||!detail.IsVisible)return;
   if(!detail.Children.OfType<TextBlock>().Any(t=>t.Text=="Меню лаунчера"))return;

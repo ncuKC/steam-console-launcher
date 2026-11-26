@@ -29,7 +29,18 @@ public partial class LauncherWindow{
  void ConfigureConsoleView(){if(!consoleReady)return;ConfigureScene();}
  void AnimateConsoleCard(){if(previousCard!=null)ScaleCard(previousCard,1);if(list.SelectedItem!=null&&list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem) is ListBoxItem current){ScaleCard(current,1.04);previousCard=current;}}
  static void ScaleCard(ListBoxItem card,double value){card.RenderTransform=Transform.Identity;}
- void OpenConsoleSettings(){nativeContent?.Dispose();nativeContent=null;detail.Children.Clear();detail.Margin=new Thickness(60);detail.Children.Add(new TextBlock{Text="Меню лаунчера",FontSize=36,Foreground=Brushes.White,Margin=new Thickness(0,0,0,28)});foreach(var pair in new (string,Action)[]{("Назад",CloseReleaseMenu),("Аккаунт Steam",Account),("Обновить библиотеку",async()=>await Reload()),("Звук и движение",()=>Experience.Settings(this)),("Поменять подтверждение / отмену",()=>swapped=!swapped),("Выйти из лаунчера",Close)}){var b=Button(pair.Item1,pair.Item2);b.HorizontalAlignment=HorizontalAlignment.Left;b.Margin=new Thickness(0,0,0,16);detail.Children.Add(b);}AddReleaseMenu();Show("details");detail.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));}
+ void OpenConsoleSettings(){
+  nativeContent?.Dispose();nativeContent=null;detail.Children.Clear();detail.Margin=new Thickness(60);
+  detail.Children.Add(new TextBlock{Text="Меню лаунчера",FontSize=36,Foreground=Brushes.White,Margin=new Thickness(0,0,0,28)});
+  void AddItem(System.Windows.Controls.Button b){b.HorizontalAlignment=HorizontalAlignment.Left;b.Margin=new Thickness(0,0,0,16);detail.Children.Add(b);}
+  foreach(var pair in new (string,Action)[]{("Назад",CloseReleaseMenu),("Аккаунт Steam",Account),("Обновить библиотеку",async()=>await Reload())})AddItem(Button(pair.Item1,pair.Item2));
+  string VolumeCaption()=>"Громкость интерфейса: "+(Experience.Volume<=0?"выкл":Math.Round(Experience.Volume*100)+"%");
+  string MotionCaption()=>"Анимации: "+(Experience.ReducedMotion?"выкл":"вкл");
+  var volume=Button(VolumeCaption(),()=>{});volume.Click+=(_,_)=>{Experience.CycleVolume();volume.Content=VolumeCaption();Experience.Play("move");};AddItem(volume);
+  var motion=Button(MotionCaption(),()=>{});motion.Click+=(_,_)=>{Experience.ToggleMotion();motion.Content=MotionCaption();};AddItem(motion);
+  foreach(var pair in new (string,Action)[]{("Поменять подтверждение / отмену",()=>swapped=!swapped),("Выйти из лаунчера",Close)})AddItem(Button(pair.Item1,pair.Item2));
+  AddReleaseMenu();Show("details");detail.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+ }
  void WatchSession(string id){sessionTimer.Stop();sessionId=id;sessionSeen=false;sessionZeros=0;sessionRequested=DateTime.UtcNow;sessionTimer.Start();}
  void CheckSession(){if(sessionId==null){sessionTimer.Stop();return;}try{
   var active=Convert.ToString(Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0),CultureInfo.InvariantCulture)??"0";
