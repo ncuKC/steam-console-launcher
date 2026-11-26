@@ -14,9 +14,9 @@ public sealed class NativeStore:Grid{
  static readonly SemaphoreSlim DetailsGate=new(4);
  static readonly System.Collections.Concurrent.ConcurrentDictionary<string,StoreItem> WishCache=new();
  static Brush B(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
- readonly TextBox searchBox=new(){Width=300,FontSize=17,Background=B("#1A1E25"),Foreground=B("#F2EFEA"),CaretBrush=B("#D9933D"),BorderThickness=new Thickness(0),Padding=new Thickness(12,8,12,8),Margin=new Thickness(0,0,10,0)};
- readonly ListBox grid=new(){Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(4,8,4,8)};
- readonly TextBlock statusText=new(){FontSize=15,Foreground=B("#A8A49E"),Margin=new Thickness(0,4,0,8)};
+ readonly TextBox searchBox=new(){Width=300,FontSize=17,Background=B("#1B2838"),Foreground=B("#FFFFFF"),CaretBrush=B("#66C0F4"),BorderThickness=new Thickness(0),Padding=new Thickness(12,8,12,8),Margin=new Thickness(0,0,10,0)};
+ readonly ListBox grid=new(){Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(10,14,10,10)};
+ readonly TextBlock statusText=new(){FontSize=15,Foreground=B("#8F98A0"),Margin=new Thickness(0,4,0,8)};
  readonly Button[] catButtons=new Button[5];
  readonly Action<StoreItem> openGame;
  readonly Action openWeb;
@@ -37,29 +37,28 @@ public sealed class NativeStore:Grid{
   right.Children.Add(MakeBtn("Найти",()=>TriggerSearch(),true));
   right.Children.Add(MakeBtn("Веб Steam",openWeb));
   var tabs=new StackPanel{Orientation=Orientation.Horizontal};topRow.Children.Add(tabs);
-  tabs.Children.Add(new TextBlock{Text="LT",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)});
+  tabs.Children.Add(new TextBlock{Text="LT",FontSize=13,Foreground=B("#8F98A0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)});
   string[] cats={"Лидеры продаж","Скидки","Новинки","Популярное","Желаемое"};
   for(int i=0;i<5;i++){int idx=i;catButtons[i]=MakeTab(cats[i],async()=>await LoadCategoryAsync(idx));tabs.Children.Add(catButtons[i]);}
-  tabs.Children.Add(new TextBlock{Text="RT",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(4,0,0,0)});
+  tabs.Children.Add(new TextBlock{Text="RT",FontSize=13,Foreground=B("#8F98A0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(4,0,0,0)});
   bar.Children.Add(statusText);
-  bar.Children.Add(new Border{Height=1,Background=B("#262A32")});
+  bar.Children.Add(new Border{Height=1,Background=B("#2A475E")});
   Grid.SetRow(grid,1);grid.Margin=new Thickness(0,8,0,8);
   grid.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,ScrollBarVisibility.Disabled);
   grid.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty,ScrollBarVisibility.Auto);
   grid.ItemsPanel=new ItemsPanelTemplate(new FrameworkElementFactory(typeof(WrapPanel)));
   var card=new FrameworkElementFactory(typeof(StackPanel));card.SetValue(FrameworkElement.WidthProperty,272.0);
-  var art=new FrameworkElementFactory(typeof(Border));art.SetValue(FrameworkElement.HeightProperty,128.0);art.SetValue(Border.BackgroundProperty,B("#181C22"));art.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));art.SetValue(UIElement.ClipToBoundsProperty,true);
+  var art=new FrameworkElementFactory(typeof(Border));art.SetValue(FrameworkElement.HeightProperty,128.0);art.SetValue(Border.BackgroundProperty,B("#16202D"));art.SetValue(Border.CornerRadiusProperty,new CornerRadius(4));art.SetValue(UIElement.ClipToBoundsProperty,true);
   var img=new FrameworkElementFactory(typeof(Image));img.SetValue(Image.StretchProperty,Stretch.UniformToFill);img.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler(ThumbLoaded));art.AppendChild(img);card.AppendChild(art);
-  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,15.0);name.SetValue(TextBlock.LineHeightProperty,19.0);name.SetValue(TextBlock.ForegroundProperty,B("#F2EFEA"));name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.HeightProperty,40.0);name.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,2));card.AppendChild(name);
+  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,15.0);name.SetValue(TextBlock.LineHeightProperty,19.0);name.SetValue(TextBlock.ForegroundProperty,B("#FFFFFF"));name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.HeightProperty,40.0);name.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,2));card.AppendChild(name);
   var priceRow=new FrameworkElementFactory(typeof(StackPanel));priceRow.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);
-  var disc=new FrameworkElementFactory(typeof(TextBlock));disc.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Discount"));disc.SetValue(TextBlock.FontSizeProperty,13.0);disc.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);disc.SetValue(TextBlock.ForegroundProperty,B("#120E09"));disc.SetValue(TextBlock.BackgroundProperty,B("#D9933D"));disc.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));disc.SetValue(TextBlock.PaddingProperty,new Thickness(5,1,5,1));priceRow.AppendChild(disc);
-  var price=new FrameworkElementFactory(typeof(TextBlock));price.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Price"));price.SetValue(TextBlock.FontSizeProperty,14.0);price.SetValue(TextBlock.ForegroundProperty,B("#D9A86C"));price.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));priceRow.AppendChild(price);
-  var owned=new FrameworkElementFactory(typeof(TextBlock));owned.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Ownership"));owned.SetValue(TextBlock.FontSizeProperty,13.0);owned.SetValue(TextBlock.ForegroundProperty,B("#88C999"));owned.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,0,0));priceRow.AppendChild(owned);
+  var disc=new FrameworkElementFactory(typeof(TextBlock));disc.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Discount"));disc.SetValue(TextBlock.FontSizeProperty,13.0);disc.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);disc.SetValue(TextBlock.ForegroundProperty,B("#BEEE11"));disc.SetValue(TextBlock.BackgroundProperty,B("#4C6B22"));disc.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));disc.SetValue(TextBlock.PaddingProperty,new Thickness(5,1,5,1));priceRow.AppendChild(disc);
+  var price=new FrameworkElementFactory(typeof(TextBlock));price.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Price"));price.SetValue(TextBlock.FontSizeProperty,14.0);price.SetValue(TextBlock.ForegroundProperty,B("#C6D4DF"));price.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));priceRow.AppendChild(price);
+  var owned=new FrameworkElementFactory(typeof(TextBlock));owned.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Ownership"));owned.SetValue(TextBlock.FontSizeProperty,13.0);owned.SetValue(TextBlock.ForegroundProperty,B("#A4D007"));owned.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,0,0));priceRow.AppendChild(owned);
   card.AppendChild(priceRow);grid.ItemTemplate=new DataTemplate{VisualTree=card};
-  var frame=new FrameworkElementFactory(typeof(Border));frame.Name="StoreCard";frame.SetValue(Border.BorderThicknessProperty,new Thickness(0));frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(10));frame.SetValue(Border.BackgroundProperty,B("#14171D"));frame.SetValue(Border.PaddingProperty,new Thickness(8));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+  var frame=new FrameworkElementFactory(typeof(Border));frame.Name="StoreCard";frame.SetValue(Border.BorderThicknessProperty,new Thickness(3));frame.SetValue(Border.BorderBrushProperty,Brushes.Transparent);frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));frame.SetValue(Border.BackgroundProperty,B("#1B2838"));frame.SetValue(Border.PaddingProperty,new Thickness(6));frame.SetValue(UIElement.RenderTransformOriginProperty,new Point(.5,.5));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
   var tpl=new ControlTemplate(typeof(ListBoxItem)){VisualTree=frame};
-  var sel=new Trigger{Property=ListBoxItem.IsSelectedProperty,Value=true};sel.Setters.Add(new Setter(Border.BackgroundProperty,B("#382A1A"),"StoreCard"));tpl.Triggers.Add(sel);
-  var foc=new Trigger{Property=UIElement.IsKeyboardFocusWithinProperty,Value=true};foc.Setters.Add(new Setter(Border.BackgroundProperty,B("#7A5122"),"StoreCard"));tpl.Triggers.Add(foc);
+  var foc=new Trigger{Property=UIElement.IsKeyboardFocusWithinProperty,Value=true};foc.Setters.Add(new Setter(Border.BackgroundProperty,B("#2A475E"),"StoreCard"));foc.Setters.Add(new Setter(Border.BorderBrushProperty,Brushes.White,"StoreCard"));foc.Setters.Add(new Setter(UIElement.RenderTransformProperty,new ScaleTransform(1.05,1.05),"StoreCard"));tpl.Triggers.Add(foc);
   var st=new Style(typeof(ListBoxItem));st.Setters.Add(new Setter(Control.TemplateProperty,tpl));st.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,null));st.Setters.Add(new Setter(Control.MarginProperty,new Thickness(0,0,14,14)));grid.ItemContainerStyle=st;
   grid.MouseDoubleClick+=(_,_)=>{if(grid.SelectedItem is StoreItem item)openGame(item);};
   grid.KeyDown+=(_,e)=>{if(e.Key==Key.Enter&&grid.SelectedItem is StoreItem item){openGame(item);e.Handled=true;}};
@@ -73,23 +72,23 @@ public sealed class NativeStore:Grid{
   else FocusGrid();
  }
  static Button MakeBtn(string text,Action action,bool primary=false){
-  var b=new Button{Content=text,FontSize=16,FontWeight=primary?FontWeights.SemiBold:FontWeights.Normal,Padding=new Thickness(16,8,16,8),Margin=new Thickness(0,0,8,0),Foreground=primary?B("#120E09"):B("#EDEAE4"),Background=B(primary?"#D9933D":"#1C2028"),Cursor=Cursors.Hand};
-  var border=new FrameworkElementFactory(typeof(Border));border.Name="Frame";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(8));border.SetValue(Border.BorderThicknessProperty,new Thickness(2));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);
+  var b=new Button{Content=text,FontSize=16,FontWeight=primary?FontWeights.SemiBold:FontWeights.Normal,Padding=new Thickness(16,8,16,8),Margin=new Thickness(0,0,8,0),Foreground=primary?B("#FFFFFF"):B("#C6D4DF"),Background=B(primary?"#1A9FFF":"#2A475E"),Cursor=Cursors.Hand};
+  var border=new FrameworkElementFactory(typeof(Border));border.Name="Frame";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(4));border.SetValue(Border.BorderThicknessProperty,new Thickness(2));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);
   border.SetBinding(Border.BackgroundProperty,new System.Windows.Data.Binding("Background"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
   border.SetBinding(Border.PaddingProperty,new System.Windows.Data.Binding("Padding"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
   border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
   var t=new ControlTemplate(typeof(Button)){VisualTree=border};
-  var f=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};f.Setters.Add(new Setter(Border.BorderBrushProperty,B("#F0B462"),"Frame"));t.Triggers.Add(f);
+  var f=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};f.Setters.Add(new Setter(Border.BorderBrushProperty,Brushes.White,"Frame"));t.Triggers.Add(f);
   b.Template=t;b.Click+=(_,_)=>action();return b;
  }
  static Button MakeTab(string text,Action action){
-  var b=new Button{Content=text,FontSize=18,Foreground=B("#EDEAE4"),Background=Brushes.Transparent,Padding=new Thickness(14,8,14,8),Margin=new Thickness(0,0,8,0),Cursor=Cursors.Hand};
-  var border=new FrameworkElementFactory(typeof(Border));border.Name="TabLine";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(6,6,0,0));border.SetValue(Border.BorderThicknessProperty,new Thickness(0,0,0,3));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);border.SetValue(Border.BackgroundProperty,Brushes.Transparent);
+  var b=new Button{Content=text,FontSize=18,Foreground=B("#C6D4DF"),Background=Brushes.Transparent,Padding=new Thickness(14,8,14,8),Margin=new Thickness(0,0,8,0),Cursor=Cursors.Hand};
+  var border=new FrameworkElementFactory(typeof(Border));border.Name="TabLine";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(4,4,0,0));border.SetValue(Border.BorderThicknessProperty,new Thickness(0,0,0,3));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);border.SetValue(Border.BackgroundProperty,Brushes.Transparent);
   border.SetBinding(Border.PaddingProperty,new System.Windows.Data.Binding("Padding"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
   border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
   var t=new ControlTemplate(typeof(Button)){VisualTree=border};
-  var a=new Trigger{Property=FrameworkElement.TagProperty,Value="active"};a.Setters.Add(new Setter(Border.BorderBrushProperty,B("#D9933D"),"TabLine"));a.Setters.Add(new Setter(Border.BackgroundProperty,B("#241E17"),"TabLine"));t.Triggers.Add(a);
-  var f=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};f.Setters.Add(new Setter(Border.BackgroundProperty,B("#382A1A"),"TabLine"));f.Setters.Add(new Setter(Border.BorderBrushProperty,B("#F0B462"),"TabLine"));t.Triggers.Add(f);
+  var a=new Trigger{Property=FrameworkElement.TagProperty,Value="active"};a.Setters.Add(new Setter(Border.BorderBrushProperty,B("#66C0F4"),"TabLine"));a.Setters.Add(new Setter(Border.BackgroundProperty,B("#1B2838"),"TabLine"));t.Triggers.Add(a);
+  var f=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};f.Setters.Add(new Setter(Border.BackgroundProperty,B("#2A475E"),"TabLine"));f.Setters.Add(new Setter(Border.BorderBrushProperty,B("#66C0F4"),"TabLine"));t.Triggers.Add(f);
   b.Template=t;b.Click+=(_,_)=>action();return b;
  }
  async Task<StoreItem> LoadWishItemAsync(string id){

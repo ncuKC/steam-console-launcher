@@ -7,8 +7,8 @@ using Microsoft.Web.WebView2.Core;
 namespace ConsoleLauncher;
 public record SteamSession(string SteamId,string PersonaName);
 public partial class LauncherWindow{
- readonly TextBlock accountBadge=new(){FontSize=16,Foreground=B("#D9A86C"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,18,16)};
- readonly TextBlock authStatus=new(){TextWrapping=TextWrapping.Wrap,FontSize=17,Foreground=B("#D9A86C"),Margin=new Thickness(0,0,0,14)};
+ readonly TextBlock accountBadge=new(){FontSize=16,Foreground=B("#66C0F4"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,18,16)};
+ readonly TextBlock authStatus=new(){TextWrapping=TextWrapping.Wrap,FontSize=17,Foreground=B("#66C0F4"),Margin=new Thickness(0,0,0,14)};
  SteamSession? steamSession;bool authWatchAttached,awaitingSteamLogin;
  string AccountFile=>Path.Combine(Root,"account.json");
  void InitSteamAuth(){

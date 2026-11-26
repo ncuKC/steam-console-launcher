@@ -26,10 +26,10 @@ public partial class LauncherWindow{
   keyboardOpen=true;timer.Stop();
   var poll=new DispatcherTimer{Interval=TimeSpan.FromMilliseconds(33)};
   try{
-   var dialog=new Window{Owner=this,Title=heading,Width=940,Height=620,WindowStartupLocation=WindowStartupLocation.CenterOwner,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,Background=B("#0D0F12"),Foreground=Brushes.White};
+   var dialog=new Window{Owner=this,Title=heading,Width=940,Height=620,WindowStartupLocation=WindowStartupLocation.CenterOwner,WindowStyle=WindowStyle.None,ResizeMode=ResizeMode.NoResize,Background=B("#171A21"),Foreground=Brushes.White};
    var root=new StackPanel{Margin=new Thickness(24)};dialog.Content=root;
-   root.Children.Add(new TextBlock{Text=heading,FontSize=28,Foreground=B("#F2EFEA"),Margin=new Thickness(0,0,0,16)});
-   var input=new TextBox{Text=initial,FontSize=25,Background=B("#1A1E25"),Foreground=B("#F2EFEA"),CaretBrush=B("#D9933D"),BorderThickness=new Thickness(0),Padding=new Thickness(12),Margin=new Thickness(0,0,0,18)};root.Children.Add(input);
+   root.Children.Add(new TextBlock{Text=heading,FontSize=28,Foreground=B("#FFFFFF"),Margin=new Thickness(0,0,0,16)});
+   var input=new TextBox{Text=initial,FontSize=25,Background=B("#1B2838"),Foreground=B("#FFFFFF"),CaretBrush=B("#66C0F4"),BorderThickness=new Thickness(0),Padding=new Thickness(12),Margin=new Thickness(0,0,0,18)};root.Children.Add(input);
    var keys=new WrapPanel();root.Children.Add(keys);bool russian=false;
    void Fill(){keys.Children.Clear();foreach(char letter in russian?"АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ0123456789":"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"){char value=letter;var key=Button(value.ToString(),()=>{input.AppendText(value.ToString());input.CaretIndex=input.Text.Length;});key.Width=66;key.Height=52;key.Padding=new Thickness(4);keys.Children.Add(key);}}
    Fill();
@@ -40,7 +40,7 @@ public partial class LauncherWindow{
    actions.Children.Add(Button("RU / EN",()=>{russian=!russian;Fill();(keys.Children[0] as UIElement)?.Focus();}));
    actions.Children.Add(Button("Найти",()=>dialog.DialogResult=true,true));
    actions.Children.Add(Button("Отмена",()=>dialog.DialogResult=false));
-   root.Children.Add(new TextBlock{Text="Крестовина / стик — выбор · A — нажать · B — отмена. Также доступен ввод обычной клавиатурой.",Foreground=B("#A8A49E"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,12,0,0),FontSize=14});
+   root.Children.Add(new TextBlock{Text="Крестовина / стик — выбор · A — нажать · B — отмена. Также доступен ввод обычной клавиатурой.",Foreground=B("#8F98A0"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,12,0,0),FontSize=14});
    dialog.PreviewKeyDown+=(_,e)=>{if(e.Key==Key.Escape){dialog.DialogResult=false;e.Handled=true;}else if(e.Key==Key.Enter&&input.IsKeyboardFocused){dialog.DialogResult=true;e.Handled=true;}};
    poll.Tick+=(_,_)=>{if(pad==null)return;foreach(int code in pad.Tick(dialog.IsActive)){if(code==(swapped?0:1)){dialog.DialogResult=false;break;}if(code==(swapped?1:0)){if(Keyboard.FocusedElement is System.Windows.Controls.Button button)button.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));continue;}if(code>=11&&code<=14){var direction=code==11?FocusNavigationDirection.Up:code==12?FocusNavigationDirection.Down:code==13?FocusNavigationDirection.Left:FocusNavigationDirection.Right;(Keyboard.FocusedElement as UIElement)?.MoveFocus(new TraversalRequest(direction));}}};
    dialog.Loaded+=(_,_)=>{(keys.Children[0] as UIElement)?.Focus();poll.Start();};
