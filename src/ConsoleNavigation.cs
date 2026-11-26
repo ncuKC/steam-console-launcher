@@ -15,7 +15,9 @@ public partial class LauncherWindow{
     item=>OpenStoreItemDetails(item),
     ()=>{_=Store("https://store.steampowered.com/");},
     ()=>{if(nativeStoreView!=null)nativeStoreView.Visibility=Visibility.Collapsed;Back();FocusSelected();},
-    initial=>PromptOnScreenKeyboard("Поиск в магазине",initial)
+    initial=>PromptOnScreenKeyboard("Поиск в магазине",initial),
+    id=>games.FirstOrDefault(g=>g.Id==id) is Game g?(g.Installed?"Установлено":"В библиотеке"):"",
+    ()=>steamSession?.SteamId
    );
    ((Grid)Content).Children.Add(nativeStoreView);
   }

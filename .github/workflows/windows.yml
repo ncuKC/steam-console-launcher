@@ -80,9 +80,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
         run: |
           $version = '0.2.${{ github.run_number }}'
           $files = @(Get-ChildItem Releases -File | ForEach-Object { $_.FullName })
           if (!$files.Count) { throw 'No release assets found' }
-          gh release create "v$version" @files --repo $env:GH_REPO --target '${{ github.sha }}' --title "Steam Console Launcher $version" --notes "Windows x64. Изменения: экранная клавиатура поиска RU/EN с управлением геймпадом; опциональный автозапуск при входе в Windows; обновления из основного репозитория. Функциональные проверки на устройстве ещё не завершены. Установите Setup.exe для обновлений из лаунчера. Сборка ${{ github.sha }}."
+          $summary = ($env:COMMIT_MSG -replace '\[release\]\s*', '').Trim()
+          if (!$summary) { $summary = 'Обновление Steam Console Launcher' }
+          $notes = "Windows x64.`n`nИзменения: $summary`n`nУстановите Setup.exe для обновлений из лаунчера. Сборка ${{ github.sha }}."
+          gh release create "v$version" @files --repo $env:GH_REPO --target '${{ github.sha }}' --title "Steam Console Launcher $version" --notes $notes
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }
