@@ -13,7 +13,7 @@ public sealed class Gamepad:IDisposable{
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)][return:MarshalAs(UnmanagedType.I1)]static extern bool SDL_GetGamepadButton(IntPtr pad,int button);
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern short SDL_GetGamepadAxis(IntPtr pad,int axis);
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)][return:MarshalAs(UnmanagedType.I1)]static extern bool SDL_PollEvent(IntPtr ev);
- IntPtr pad;bool ready,ltBefore,rtBefore;readonly bool[] before=new bool[26];long next;
+ IntPtr pad;bool ready;bool ltBefore,rtBefore;readonly bool[] before=new bool[26];long next;
  public Gamepad(){try{ready=SDL_Init(0x00002000);}catch(DllNotFoundException){}catch(BadImageFormatException){}}
  public IEnumerable<int> Tick(bool active){
   var pressed=new List<int>();if(!ready)return pressed;
