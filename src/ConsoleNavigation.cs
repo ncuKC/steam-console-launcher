@@ -75,6 +75,7 @@ public partial class LauncherWindow{
   Mouse.OverrideCursor=Cursors.None;lastPointer=Mouse.GetPosition(this);RefreshGraphicHints();
   if(code==6){OpenReleaseMenu();inputPage="";return true;}
   if(code==9||code==10){SetStoreOverlay(false);inputPage="";return false;}
+  if(page=="store"&&HandleWebPad(code))return true;
   if(page=="native_store"&&nativeStoreView!=null)return nativeStoreView.HandlePad(code,swapped);
   if(page!="native_store")SetStoreOverlay(false);
   int confirm=swapped?1:0,back=swapped?0:1;

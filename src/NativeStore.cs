@@ -46,20 +46,23 @@ public sealed class NativeStore:Grid{
   Grid.SetRow(grid,1);grid.Margin=new Thickness(0,8,0,8);
   grid.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,ScrollBarVisibility.Disabled);
   grid.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty,ScrollBarVisibility.Auto);
+  grid.SetValue(ScrollViewer.CanContentScrollProperty,false);
   grid.ItemsPanel=new ItemsPanelTemplate(new FrameworkElementFactory(typeof(WrapPanel)));
-  var card=new FrameworkElementFactory(typeof(StackPanel));card.SetValue(FrameworkElement.WidthProperty,272.0);
-  var art=new FrameworkElementFactory(typeof(Border));art.SetValue(FrameworkElement.HeightProperty,128.0);art.SetValue(Border.BackgroundProperty,B("#16202D"));art.SetValue(Border.CornerRadiusProperty,new CornerRadius(4));art.SetValue(UIElement.ClipToBoundsProperty,true);
-  var img=new FrameworkElementFactory(typeof(Image));img.SetValue(Image.StretchProperty,Stretch.UniformToFill);img.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler(ThumbLoaded));art.AppendChild(img);card.AppendChild(art);
-  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,15.0);name.SetValue(TextBlock.LineHeightProperty,19.0);name.SetValue(TextBlock.ForegroundProperty,B("#FFFFFF"));name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.HeightProperty,40.0);name.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,2));card.AppendChild(name);
+  var card=new FrameworkElementFactory(typeof(StackPanel));card.SetValue(FrameworkElement.WidthProperty,180.0);
+  var art=new FrameworkElementFactory(typeof(Border));art.SetValue(FrameworkElement.HeightProperty,266.0);art.SetValue(Border.BackgroundProperty,B("#16202D"));art.SetValue(Border.CornerRadiusProperty,new CornerRadius(4));art.SetValue(UIElement.ClipToBoundsProperty,true);
+  var artStack=new FrameworkElementFactory(typeof(Grid));
+  var placeholder=new FrameworkElementFactory(typeof(TextBlock));placeholder.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));placeholder.SetValue(TextBlock.FontSizeProperty,20.0);placeholder.SetValue(TextBlock.ForegroundProperty,B("#8F98A0"));placeholder.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);placeholder.SetValue(TextBlock.TextAlignmentProperty,TextAlignment.Center);placeholder.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);placeholder.SetValue(FrameworkElement.MarginProperty,new Thickness(14));artStack.AppendChild(placeholder);
+  var img=new FrameworkElementFactory(typeof(Image));img.SetValue(Image.StretchProperty,Stretch.UniformToFill);img.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler(ThumbLoaded));artStack.AppendChild(img);art.AppendChild(artStack);card.AppendChild(art);
+  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,15.0);name.SetValue(TextBlock.LineHeightProperty,19.0);name.SetValue(TextBlock.ForegroundProperty,B("#FFFFFF"));name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.HeightProperty,42.0);name.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,2));card.AppendChild(name);
   var priceRow=new FrameworkElementFactory(typeof(StackPanel));priceRow.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);
   var disc=new FrameworkElementFactory(typeof(TextBlock));disc.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Discount"));disc.SetValue(TextBlock.FontSizeProperty,13.0);disc.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);disc.SetValue(TextBlock.ForegroundProperty,B("#BEEE11"));disc.SetValue(TextBlock.BackgroundProperty,B("#4C6B22"));disc.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));disc.SetValue(TextBlock.PaddingProperty,new Thickness(5,1,5,1));priceRow.AppendChild(disc);
   var price=new FrameworkElementFactory(typeof(TextBlock));price.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Price"));price.SetValue(TextBlock.FontSizeProperty,14.0);price.SetValue(TextBlock.ForegroundProperty,B("#C6D4DF"));price.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));priceRow.AppendChild(price);
   var owned=new FrameworkElementFactory(typeof(TextBlock));owned.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Ownership"));owned.SetValue(TextBlock.FontSizeProperty,13.0);owned.SetValue(TextBlock.ForegroundProperty,B("#A4D007"));owned.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,0,0));priceRow.AppendChild(owned);
   card.AppendChild(priceRow);grid.ItemTemplate=new DataTemplate{VisualTree=card};
-  var frame=new FrameworkElementFactory(typeof(Border));frame.Name="StoreCard";frame.SetValue(Border.BorderThicknessProperty,new Thickness(3));frame.SetValue(Border.BorderBrushProperty,Brushes.Transparent);frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));frame.SetValue(Border.BackgroundProperty,B("#1B2838"));frame.SetValue(Border.PaddingProperty,new Thickness(6));frame.SetValue(UIElement.RenderTransformOriginProperty,new Point(.5,.5));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
+  var frame=new FrameworkElementFactory(typeof(Border));frame.Name="StoreCard";frame.SetValue(Border.BorderThicknessProperty,new Thickness(3));frame.SetValue(Border.BorderBrushProperty,Brushes.Transparent);frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));frame.SetValue(Border.BackgroundProperty,Brushes.Transparent);frame.SetValue(Border.PaddingProperty,new Thickness(6));frame.SetValue(UIElement.RenderTransformOriginProperty,new Point(.5,.5));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
   var tpl=new ControlTemplate(typeof(ListBoxItem)){VisualTree=frame};
   var foc=new Trigger{Property=UIElement.IsKeyboardFocusWithinProperty,Value=true};foc.Setters.Add(new Setter(Border.BackgroundProperty,B("#2A475E"),"StoreCard"));foc.Setters.Add(new Setter(Border.BorderBrushProperty,Brushes.White,"StoreCard"));foc.Setters.Add(new Setter(UIElement.RenderTransformProperty,new ScaleTransform(1.05,1.05),"StoreCard"));tpl.Triggers.Add(foc);
-  var st=new Style(typeof(ListBoxItem));st.Setters.Add(new Setter(Control.TemplateProperty,tpl));st.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,null));st.Setters.Add(new Setter(Control.MarginProperty,new Thickness(0,0,14,14)));grid.ItemContainerStyle=st;
+  var st=new Style(typeof(ListBoxItem));st.Setters.Add(new Setter(Control.TemplateProperty,tpl));st.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,null));st.Setters.Add(new Setter(Control.MarginProperty,new Thickness(0,0,14,14)));st.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Top));st.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty,VerticalAlignment.Top));grid.ItemContainerStyle=st;
   grid.MouseDoubleClick+=(_,_)=>{if(grid.SelectedItem is StoreItem item)openGame(item);};
   grid.KeyDown+=(_,e)=>{if(e.Key==Key.Enter&&grid.SelectedItem is StoreItem item){openGame(item);e.Handled=true;}};
   searchBox.KeyDown+=(_,e)=>{if(e.Key==Key.Enter){_=SearchAsync(searchBox.Text);e.Handled=true;}};
@@ -192,11 +195,14 @@ public sealed class NativeStore:Grid{
   }catch{statusText.Text="Поиск временно недоступен.";}
  }
  async void ThumbLoaded(object sender,RoutedEventArgs e){
-  if(sender is not Image image||image.DataContext is not StoreItem item||string.IsNullOrEmpty(item.ImageUrl))return;
+  if(sender is not Image image||image.DataContext is not StoreItem item)return;
   await Gate.WaitAsync();
   try{
-   var bytes=await Http.GetByteArrayAsync(item.ImageUrl);
-   var bmp=await Task.Run(()=>{using var ms=new MemoryStream(bytes);var b=new BitmapImage();b.BeginInit();b.CacheOption=BitmapCacheOption.OnLoad;b.DecodePixelWidth=460;b.StreamSource=ms;b.EndInit();b.Freeze();return b;});
+   byte[]? bytes=null;
+   try{bytes=await Http.GetByteArrayAsync($"https://shared.fastly.steamstatic.com/steam/apps/{item.Id}/library_600x900.jpg");}catch{}
+   if(bytes==null&&!string.IsNullOrEmpty(item.ImageUrl))try{bytes=await Http.GetByteArrayAsync(item.ImageUrl);}catch{}
+   if(bytes==null)return;
+   var bmp=await Task.Run(()=>{using var ms=new MemoryStream(bytes);var b=new BitmapImage();b.BeginInit();b.CacheOption=BitmapCacheOption.OnLoad;b.DecodePixelWidth=400;b.StreamSource=ms;b.EndInit();b.Freeze();return b;});
    if(image.DataContext is StoreItem cur&&cur.Id==item.Id)image.Source=bmp;
   }catch{}finally{Gate.Release();}
  }
@@ -215,7 +221,7 @@ public sealed class NativeStore:Grid{
   if(code==3){TriggerSearch();return true;}
   if(code==confirm&&grid.SelectedItem is StoreItem item){openGame(item);return true;}
   if(code>=11&&code<=14&&grid.Items.Count>0){
-   int cols=Math.Max(1,(int)(grid.ActualWidth/302));
+   int cols=Math.Max(1,(int)(grid.ActualWidth/212));
    int delta=code==13?-1:code==14?1:code==11?-cols:cols;
    grid.SelectedIndex=Math.Clamp(grid.SelectedIndex+delta,0,grid.Items.Count-1);
    FocusGrid();return true;
