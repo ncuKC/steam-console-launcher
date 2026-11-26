@@ -26,7 +26,7 @@ public partial class LauncherWindow{
   Dispatcher.BeginInvoke(new Action(FocusSelected),DispatcherPriority.Loaded);
  }
  void FocusSelected(){if(list.SelectedItem!=null&&list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem) is ListBoxItem item)item.Focus();else list.Focus();}
- void ConfigureConsoleView(){if(!consoleReady)return;
+ void ConfigureConsoleView(){if(!consoleReady)return;if(configuredLayout==home)return;configuredLayout=home;
   var factory=new FrameworkElementFactory(home?typeof(StackPanel):typeof(WrapPanel));if(home)factory.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);list.ItemsPanel=new ItemsPanelTemplate(factory);
   list.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,home?ScrollBarVisibility.Auto:ScrollBarVisibility.Disabled);list.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty,home?ScrollBarVisibility.Disabled:ScrollBarVisibility.Auto);
   if(hero.Parent is Grid banner)banner.Visibility=home?Visibility.Visible:Visibility.Collapsed;

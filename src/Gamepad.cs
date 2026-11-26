@@ -27,7 +27,6 @@ public sealed class Gamepad:IDisposable{
   ltBefore=lt;rtBefore=rt;
   long now=Environment.TickCount64;
   if(active&&now>=next){int x=SDL_GetGamepadAxis(pad,0),y=SDL_GetGamepadAxis(pad,1);int dir=Math.Abs(x)>Math.Abs(y)?(x>12000?14:x< -12000?13:-1):(y>12000?12:y< -12000?11:-1);if(dir>=0){pressed.Add(dir);next=now+180;}}
-  return pressed;
- }
+  if(active){int rightY=SDL_GetGamepadAxis(pad,3);if(rightY < -12000)pressed.Add(101);else if(rightY > 12000)pressed.Add(102);}return pressed;}
  public void Dispose(){if(!ready)return;if(pad!=IntPtr.Zero)SDL_CloseGamepad(pad);SDL_Quit();ready=false;}
 }

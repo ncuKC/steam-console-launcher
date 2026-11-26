@@ -26,7 +26,6 @@ jobs:
         shell: pwsh
         run: |
           ./tools/Make-Icon.ps1
-          ./tools/Apply-Usability.ps1
           ./tools/Apply-ReleaseUX.ps1
       - name: Set build version
         shell: pwsh
