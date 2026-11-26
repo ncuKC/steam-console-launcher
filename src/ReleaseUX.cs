@@ -41,7 +41,7 @@ public partial class LauncherWindow{
  void AddReleaseMenu(){
   AddSteamAuthMenu();
   detail.Children.Add(new TextBlock{Text="Версия: "+BuildVersion,FontSize=16,Margin=new Thickness(0,0,0,12)});
-  if(updateStatus.Parent is Panel old)old.Children.Remove(updateStatus);detail.Children.Add(updateStatus);
+  if(updateStatus.Parent is Panel old)old.Children.Remove(updateStatus);detail.Children.Add(updateStatus);AttachDownloadProgress();
   detail.Children.Add(Button("Проверить обновления лаунчера",async()=>await CheckLauncherUpdates(true)));
   detail.Children.Add(Button("Скачать обновление и перезапустить",async()=>await InstallLauncherUpdate()));
  }
@@ -49,13 +49,13 @@ public partial class LauncherWindow{
   if(updateBusy)return;updateBusy=true;
   try{updateStatus.Text="Проверка обновлений…";updateManager??=new UpdateManager(new GithubSource("https://github.com/ncuKC/steam-console-launcher",null,false));if(!updateManager.IsInstalled){updateStatus.Text="Для обновлений установите сборку через Setup.exe. Текущий запуск — без установленного обновлятора.";return;}availableUpdate=await updateManager.CheckForUpdatesAsync();updateStatus.Text=availableUpdate==null?"Установлена актуальная версия.":"Доступна версия "+availableUpdate.TargetFullRelease.Version+". Обновление применяется только по вашей команде.";}
   catch(Exception ex){updateStatus.Text="Не удалось проверить обновления. Приложение продолжает работу. "+ex.Message;}
-  finally{updateBusy=false;}
+  finally{updateBusy=false;SetInstallEnabled(true);}
  }
  bool SteamGameRunning(){try{return Convert.ToInt64(Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0))!=0||(sessionId!=null&&Convert.ToInt32(Microsoft.Win32.Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam\Apps\"+sessionId,"Running",0))!=0);}catch{return true;}}
  async Task InstallLauncherUpdate(){
   if(updateBusy)return;if(availableUpdate==null){await CheckLauncherUpdates(true);return;}
   if(SteamGameRunning()){updateStatus.Text="Завершите игру перед обновлением лаунчера.";return;}
-  updateBusy=true;try{updateStatus.Text="Скачивание обновления…";await updateManager!.DownloadUpdatesAsync(availableUpdate);if(SteamGameRunning()){updateStatus.Text="Обновление скачано. Завершите игру и снова нажмите кнопку установки.";return;}updateStatus.Text="Применение обновления…";updateManager.ApplyUpdatesAndRestart(availableUpdate);}
-  catch(Exception ex){updateStatus.Text="Обновление не применено. "+ex.Message;}finally{updateBusy=false;}
+  updateBusy=true;BeginDownloadProgress();try{updateStatus.Text="Скачивание обновления…";await updateManager!.DownloadUpdatesAsync(availableUpdate,ReportDownloadProgress);if(SteamGameRunning()){updateStatus.Text="Обновление скачано. Завершите игру и снова нажмите кнопку установки.";return;}updateStatus.Text="Применение обновления…";updateManager.ApplyUpdatesAndRestart(availableUpdate);}
+  catch(Exception ex){updateStatus.Text="Обновление не применено. "+ex.Message;}finally{updateBusy=false;SetInstallEnabled(true);}
  }
 }

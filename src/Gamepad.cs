@@ -13,7 +13,7 @@ public sealed class Gamepad:IDisposable{
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)][return:MarshalAs(UnmanagedType.I1)]static extern bool SDL_GetGamepadButton(IntPtr pad,int button);
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern short SDL_GetGamepadAxis(IntPtr pad,int axis);
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)][return:MarshalAs(UnmanagedType.I1)]static extern bool SDL_PollEvent(IntPtr ev);
- IntPtr pad;bool ready;bool ltBefore,rtBefore;readonly bool[] before=new bool[26];long next;
+ [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern int SDL_GetGamepadButtonLabel(IntPtr gamepad,int button);public string ButtonLabel(int code){int label=pad==IntPtr.Zero?0:SDL_GetGamepadButtonLabel(pad,code);return label switch{1=>"A",2=>"B",3=>"X",4=>"Y",5=>"×",6=>"○",7=>"□",8=>"△",_=>new[]{"A","B","X","Y"}[Math.Clamp(code,0,3)]};}IntPtr pad;bool ready;bool ltBefore,rtBefore;readonly bool[] before=new bool[26];long next;
  public Gamepad(){try{ready=SDL_Init(0x00002000);}catch(DllNotFoundException){}catch(BadImageFormatException){}}
  public IEnumerable<int> Tick(bool active){
   var pressed=new List<int>();if(!ready)return pressed;
