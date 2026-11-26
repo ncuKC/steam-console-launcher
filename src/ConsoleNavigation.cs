@@ -14,19 +14,30 @@ public partial class LauncherWindow{
    nativeStoreView=new NativeStore(
     item=>OpenStoreItemDetails(item),
     ()=>{_=Store("https://store.steampowered.com/");},
-    ()=>{if(nativeStoreView!=null)nativeStoreView.Visibility=Visibility.Collapsed;Back();FocusSelected();},
+    ()=>{SetStoreOverlay(false);Back();FocusSelected();},
     initial=>PromptOnScreenKeyboard("Поиск в магазине",initial),
     id=>games.FirstOrDefault(g=>g.Id==id) is Game g?(g.Installed?"Установлено":"В библиотеке"):"",
     ()=>steamSession?.SteamId
    );
-   ((Grid)Content).Children.Add(nativeStoreView);
+   Grid.SetRow(nativeStoreView,1);Grid.SetRowSpan(nativeStoreView,3);
+   shell.Children.Add(nativeStoreView);
   }
-  Show("native_store");
-  nativeStoreView.Visibility=Visibility.Visible;
+  Show("library");
+  page="native_store";
+  SetStoreOverlay(true);
+  MarkTabs();
   nativeStoreView.FocusGrid();
  }
+ void SetStoreOverlay(bool visible){
+  if(nativeStoreView!=null)nativeStoreView.Visibility=visible?Visibility.Visible:Visibility.Collapsed;
+  if(shell.Children.Count>3){
+   shell.Children[1].Visibility=visible?Visibility.Collapsed:(home?Visibility.Visible:Visibility.Collapsed);
+   shell.Children[2].Visibility=visible?Visibility.Collapsed:Visibility.Visible;
+   shell.Children[3].Visibility=visible?Visibility.Collapsed:Visibility.Visible;
+  }
+ }
  void OpenStoreItemDetails(StoreItem item){
-  if(nativeStoreView!=null)nativeStoreView.Visibility=Visibility.Collapsed;
+  SetStoreOverlay(false);
   var existing=games.FirstOrDefault(g=>g.Id==item.Id);
   var target=existing??new Game(item.Id,item.Name,false);
   detail.Children.Clear();
@@ -48,10 +59,10 @@ public partial class LauncherWindow{
  }
  void RefreshGraphicHints(){
   string Label(int code)=>pad?.ButtonLabel(code)??new[]{"A","B","X","Y"}[code];
-  string mode=page=="details"?"details":home?"home":"library";
+  string mode=page=="details"?"details":page=="native_store"?"store":home?"home":"library";
   string signature=string.Join("|",Enumerable.Range(0,4).Select(Label))+swapped+mode;if(signature==promptSignature)return;promptSignature=signature;graphicHints.Children.Clear();
-  var items=mode=="library"?new[]{(Label(swapped?1:0),"Открыть"),(Label(swapped?0:1),"Назад"),(Label(2),"Запустить"),(Label(3),"Поиск"),("☰","Меню")}:new[]{(Label(swapped?1:0),"Выбрать"),(Label(swapped?0:1),"Назад"),(Label(2),"Запустить"),(Label(3),"Поиск"),("☰","Меню")};
-  foreach(var action in items){var group=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,26,0)};group.Children.Add(new Border{Width=30,Height=30,CornerRadius=new CornerRadius(15),BorderBrush=B("#D9933D"),BorderThickness=new Thickness(1.5),Background=B("#1B1E24"),Child=new TextBlock{Text=action.Item1,FontFamily=new FontFamily("Segoe UI Symbol"),FontSize=18,Foreground=B("#F5F2EC"),TextAlignment=TextAlignment.Center,VerticalAlignment=VerticalAlignment.Center}});group.Children.Add(new TextBlock{Text=action.Item2,FontSize=17,Foreground=B("#DBD7D0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(9,0,0,0)});graphicHints.Children.Add(group);}
+  var items=mode=="store"?new[]{(Label(swapped?1:0),"Открыть"),(Label(swapped?0:1),"Назад"),("LT/RT","Категории"),(Label(3),"Поиск"),("☰","Меню")}:mode=="library"?new[]{(Label(swapped?1:0),"Открыть"),(Label(swapped?0:1),"Назад"),(Label(2),"Запустить"),(Label(3),"Поиск"),("☰","Меню")}:new[]{(Label(swapped?1:0),"Выбрать"),(Label(swapped?0:1),"Назад"),(Label(2),"Запустить"),(Label(3),"Поиск"),("☰","Меню")};
+  foreach(var action in items){var group=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,26,0)};group.Children.Add(new Border{MinWidth=30,Height=30,Padding=new Thickness(6,0,6,0),CornerRadius=new CornerRadius(15),BorderBrush=B("#D9933D"),BorderThickness=new Thickness(1.5),Background=B("#1B1E24"),Child=new TextBlock{Text=action.Item1,FontFamily=new FontFamily("Segoe UI Symbol"),FontSize=15,Foreground=B("#F5F2EC"),TextAlignment=TextAlignment.Center,VerticalAlignment=VerticalAlignment.Center}});group.Children.Add(new TextBlock{Text=action.Item2,FontSize=17,Foreground=B("#DBD7D0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(9,0,0,0)});graphicHints.Children.Add(group);}
  }
  static List<Control> NavigationControls(DependencyObject root){var result=new List<Control>();for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var child=VisualTreeHelper.GetChild(root,i);if(child is UIElement ui&&!ui.IsVisible)continue;if(child is ButtonBase btn&&btn.IsEnabled)result.Add(btn);else if(child is Slider sl&&sl.IsEnabled)result.Add(sl);else result.AddRange(NavigationControls(child));}return result;}
  static List<System.Windows.Controls.Button> NavigationButtons(DependencyObject root)=>NavigationControls(root).OfType<System.Windows.Controls.Button>().ToList();
@@ -62,13 +73,11 @@ public partial class LauncherWindow{
  }
  bool RouteConsoleInput(int code){
   Mouse.OverrideCursor=Cursors.None;lastPointer=Mouse.GetPosition(this);RefreshGraphicHints();
-  if(page=="native_store"&&nativeStoreView!=null){
-   if(code==6){OpenReleaseMenu();return true;}
-   return nativeStoreView.HandlePad(code,swapped);
-  }
-  if(nativeStoreView!=null&&page!="native_store")nativeStoreView.Visibility=Visibility.Collapsed;
-  int confirm=swapped?1:0,back=swapped?0:1;
   if(code==6){OpenReleaseMenu();inputPage="";return true;}
+  if(code==9||code==10){SetStoreOverlay(false);inputPage="";return false;}
+  if(page=="native_store"&&nativeStoreView!=null)return nativeStoreView.HandlePad(code,swapped);
+  if(page!="native_store")SetStoreOverlay(false);
+  int confirm=swapped?1:0,back=swapped?0:1;
   if(page=="details"){
    if(code==back){if(menuVisible)CloseReleaseMenu();else if(nativeContent?.HandleBack()==true){}else{Back();Dispatcher.BeginInvoke(new Action(()=>{if(list.SelectedItem!=null)list.ScrollIntoView(list.SelectedItem);FocusSelected();}));}inputPage="";return true;}
    if(!menuVisible&&nativeContent?.HandlePad(code)==true)return true;
@@ -76,9 +85,8 @@ public partial class LauncherWindow{
    if(Keyboard.FocusedElement is Control current&&controls.Contains(current))detailIndex=controls.IndexOf(current);detailIndex=Math.Clamp(detailIndex,0,controls.Count-1);
    if(controls[detailIndex] is Slider slider&&(code==13||code==14)){double step=(slider.Maximum-slider.Minimum)/10.0;slider.Value=Math.Clamp(slider.Value+(code==13?-step:step),slider.Minimum,slider.Maximum);return true;}
    if(code>=11&&code<=14){detailIndex=Math.Clamp(detailIndex+(code==11||code==13?-1:1),0,controls.Count-1);controls[detailIndex].Focus();controls[detailIndex].BringIntoView();return true;}
-   if(code==confirm){ActivateInputControl(controls[detailIndex]);return true;}return code==2||code==3||code==9||code==10;
+   if(code==confirm){ActivateInputControl(controls[detailIndex]);return true;}return code==2||code==3||code==103||code==104;
   }
-  if(code==9||code==10){inputPage="";return false;}
   if(inputPage!=page){inputPage=page;inputZone=2;inputIndex=detailIndex=0;}
   if(code==back){if(menuVisible)CloseReleaseMenu();else{Back();Dispatcher.BeginInvoke(new Action(()=>{if(list.SelectedItem!=null)list.ScrollIntoView(list.SelectedItem);FocusSelected();}));}inputPage="";return true;}
   if(page=="store")return false;

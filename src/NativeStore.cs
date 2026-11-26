@@ -12,9 +12,9 @@ public sealed class NativeStore:Grid{
  static readonly HttpClient Http=new(){Timeout=TimeSpan.FromSeconds(15)};
  static readonly SemaphoreSlim Gate=new(4);
  static Brush B(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
- readonly TextBox searchBox=new(){Width=360,FontSize=18,Background=B("#1A1E25"),Foreground=B("#F2EFEA"),CaretBrush=B("#D9933D"),BorderThickness=new Thickness(0),Padding=new Thickness(14,10,14,10),Margin=new Thickness(0,0,12,0)};
+ readonly TextBox searchBox=new(){Width=300,FontSize=17,Background=B("#1A1E25"),Foreground=B("#F2EFEA"),CaretBrush=B("#D9933D"),BorderThickness=new Thickness(0),Padding=new Thickness(12,8,12,8),Margin=new Thickness(0,0,10,0)};
  readonly ListBox grid=new(){Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(4,8,4,8)};
- readonly TextBlock statusText=new(){FontSize=15,Foreground=B("#A8A49E"),Margin=new Thickness(0,0,0,10)};
+ readonly TextBlock statusText=new(){FontSize=15,Foreground=B("#A8A49E"),Margin=new Thickness(0,4,0,8)};
  readonly Button[] catButtons=new Button[5];
  readonly Action<StoreItem> openGame;
  readonly Action openWeb;
@@ -25,36 +25,34 @@ public sealed class NativeStore:Grid{
  int activeCat;bool loaded;
  public NativeStore(Action<StoreItem> onOpenGame,Action onOpenWeb,Action onBack,Func<string,string?> onOpenKeyboard,Func<string,string> onGetOwnership,Func<string?> onGetSteamId){
   openGame=onOpenGame;openWeb=onOpenWeb;goBack=onBack;openKeyboard=onOpenKeyboard;getOwnership=onGetOwnership;getSteamId=onGetSteamId;
-  Background=B("#0D0F12");
-  RowDefinitions.Add(new(){Height=GridLength.Auto});
+  Background=Brushes.Transparent;
   RowDefinitions.Add(new(){Height=GridLength.Auto});
   RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
-  var top=new DockPanel{Margin=new Thickness(48,28,48,12)};Children.Add(top);
-  var right=new StackPanel{Orientation=Orientation.Horizontal};DockPanel.SetDock(right,Dock.Right);top.Children.Add(right);
+  var bar=new StackPanel{Margin=new Thickness(0,8,0,6)};Children.Add(bar);
+  var topRow=new DockPanel{Margin=new Thickness(0,0,0,6)};bar.Children.Add(topRow);
+  var right=new StackPanel{Orientation=Orientation.Horizontal};DockPanel.SetDock(right,Dock.Right);topRow.Children.Add(right);
   right.Children.Add(searchBox);
   right.Children.Add(MakeBtn("Найти",()=>TriggerSearch(),true));
-  right.Children.Add(MakeBtn("Веб-версия Steam",openWeb));
-  var left=new StackPanel{Orientation=Orientation.Horizontal};top.Children.Add(left);
-  left.Children.Add(MakeBtn("Назад",goBack));
-  left.Children.Add(new TextBlock{Text="Магазин",FontSize=32,FontWeight=FontWeights.SemiBold,Foreground=B("#F2EFEA"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(16,0,0,0)});
-  var bar=new StackPanel{Margin=new Thickness(48,0,48,8)};Grid.SetRow(bar,1);Children.Add(bar);
-  var tabs=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,0,8)};bar.Children.Add(tabs);
+  right.Children.Add(MakeBtn("Веб Steam",openWeb));
+  var tabs=new StackPanel{Orientation=Orientation.Horizontal};topRow.Children.Add(tabs);
+  tabs.Children.Add(new TextBlock{Text="LT",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,10,0)});
   string[] cats={"Лидеры продаж","Скидки","Новинки","Популярное","Желаемое"};
   for(int i=0;i<5;i++){int idx=i;catButtons[i]=MakeTab(cats[i],async()=>await LoadCategoryAsync(idx));tabs.Children.Add(catButtons[i]);}
+  tabs.Children.Add(new TextBlock{Text="RT",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(4,0,0,0)});
   bar.Children.Add(statusText);
   bar.Children.Add(new Border{Height=1,Background=B("#262A32")});
-  Grid.SetRow(grid,2);grid.Margin=new Thickness(44,8,44,24);
+  Grid.SetRow(grid,1);grid.Margin=new Thickness(0,8,0,8);
   grid.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,ScrollBarVisibility.Disabled);
   grid.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty,ScrollBarVisibility.Auto);
   grid.ItemsPanel=new ItemsPanelTemplate(new FrameworkElementFactory(typeof(WrapPanel)));
   var card=new FrameworkElementFactory(typeof(StackPanel));card.SetValue(FrameworkElement.WidthProperty,272.0);
   var art=new FrameworkElementFactory(typeof(Border));art.SetValue(FrameworkElement.HeightProperty,128.0);art.SetValue(Border.BackgroundProperty,B("#181C22"));art.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));art.SetValue(UIElement.ClipToBoundsProperty,true);
   var img=new FrameworkElementFactory(typeof(Image));img.SetValue(Image.StretchProperty,Stretch.UniformToFill);img.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler(ThumbLoaded));art.AppendChild(img);card.AppendChild(art);
-  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,16.0);name.SetValue(TextBlock.ForegroundProperty,B("#F2EFEA"));name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,2));card.AppendChild(name);
+  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,15.0);name.SetValue(TextBlock.LineHeightProperty,19.0);name.SetValue(TextBlock.ForegroundProperty,B("#F2EFEA"));name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.HeightProperty,40.0);name.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,2));card.AppendChild(name);
   var priceRow=new FrameworkElementFactory(typeof(StackPanel));priceRow.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);
-  var disc=new FrameworkElementFactory(typeof(TextBlock));disc.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Discount"));disc.SetValue(TextBlock.FontSizeProperty,14.0);disc.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);disc.SetValue(TextBlock.ForegroundProperty,B("#120E09"));disc.SetValue(TextBlock.BackgroundProperty,B("#D9933D"));disc.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));disc.SetValue(TextBlock.PaddingProperty,new Thickness(5,1,5,1));priceRow.AppendChild(disc);
-  var price=new FrameworkElementFactory(typeof(TextBlock));price.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Price"));price.SetValue(TextBlock.FontSizeProperty,15.0);price.SetValue(TextBlock.ForegroundProperty,B("#D9A86C"));price.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));priceRow.AppendChild(price);
-  var owned=new FrameworkElementFactory(typeof(TextBlock));owned.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Ownership"));owned.SetValue(TextBlock.FontSizeProperty,13.0);owned.SetValue(TextBlock.ForegroundProperty,B("#88C999"));owned.SetValue(FrameworkElement.MarginProperty,new Thickness(0,3,0,0));priceRow.AppendChild(owned);
+  var disc=new FrameworkElementFactory(typeof(TextBlock));disc.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Discount"));disc.SetValue(TextBlock.FontSizeProperty,13.0);disc.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);disc.SetValue(TextBlock.ForegroundProperty,B("#120E09"));disc.SetValue(TextBlock.BackgroundProperty,B("#D9933D"));disc.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));disc.SetValue(TextBlock.PaddingProperty,new Thickness(5,1,5,1));priceRow.AppendChild(disc);
+  var price=new FrameworkElementFactory(typeof(TextBlock));price.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Price"));price.SetValue(TextBlock.FontSizeProperty,14.0);price.SetValue(TextBlock.ForegroundProperty,B("#D9A86C"));price.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,8,0));priceRow.AppendChild(price);
+  var owned=new FrameworkElementFactory(typeof(TextBlock));owned.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding("Ownership"));owned.SetValue(TextBlock.FontSizeProperty,13.0);owned.SetValue(TextBlock.ForegroundProperty,B("#88C999"));owned.SetValue(FrameworkElement.MarginProperty,new Thickness(0,2,0,0));priceRow.AppendChild(owned);
   card.AppendChild(priceRow);grid.ItemTemplate=new DataTemplate{VisualTree=card};
   var frame=new FrameworkElementFactory(typeof(Border));frame.Name="StoreCard";frame.SetValue(Border.BorderThicknessProperty,new Thickness(0));frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(10));frame.SetValue(Border.BackgroundProperty,B("#14171D"));frame.SetValue(Border.PaddingProperty,new Thickness(8));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
   var tpl=new ControlTemplate(typeof(ListBoxItem)){VisualTree=frame};
@@ -73,7 +71,7 @@ public sealed class NativeStore:Grid{
   else FocusGrid();
  }
  static Button MakeBtn(string text,Action action,bool primary=false){
-  var b=new Button{Content=text,FontSize=17,FontWeight=primary?FontWeights.SemiBold:FontWeights.Normal,Padding=new Thickness(18,10,18,10),Margin=new Thickness(0,0,10,0),Foreground=primary?B("#120E09"):B("#EDEAE4"),Background=B(primary?"#D9933D":"#1C2028"),Cursor=Cursors.Hand};
+  var b=new Button{Content=text,FontSize=16,FontWeight=primary?FontWeights.SemiBold:FontWeights.Normal,Padding=new Thickness(16,8,16,8),Margin=new Thickness(0,0,8,0),Foreground=primary?B("#120E09"):B("#EDEAE4"),Background=B(primary?"#D9933D":"#1C2028"),Cursor=Cursors.Hand};
   var border=new FrameworkElementFactory(typeof(Border));border.Name="Frame";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(8));border.SetValue(Border.BorderThicknessProperty,new Thickness(2));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);
   border.SetBinding(Border.BackgroundProperty,new System.Windows.Data.Binding("Background"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
   border.SetBinding(Border.PaddingProperty,new System.Windows.Data.Binding("Padding"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
@@ -83,7 +81,7 @@ public sealed class NativeStore:Grid{
   b.Template=t;b.Click+=(_,_)=>action();return b;
  }
  static Button MakeTab(string text,Action action){
-  var b=new Button{Content=text,FontSize=19,Foreground=B("#EDEAE4"),Background=Brushes.Transparent,Padding=new Thickness(16,10,16,10),Margin=new Thickness(0,0,10,0),Cursor=Cursors.Hand};
+  var b=new Button{Content=text,FontSize=18,Foreground=B("#EDEAE4"),Background=Brushes.Transparent,Padding=new Thickness(14,8,14,8),Margin=new Thickness(0,0,8,0),Cursor=Cursors.Hand};
   var border=new FrameworkElementFactory(typeof(Border));border.Name="TabLine";border.SetValue(Border.CornerRadiusProperty,new CornerRadius(6,6,0,0));border.SetValue(Border.BorderThicknessProperty,new Thickness(0,0,0,3));border.SetValue(Border.BorderBrushProperty,Brushes.Transparent);border.SetValue(Border.BackgroundProperty,Brushes.Transparent);
   border.SetBinding(Border.PaddingProperty,new System.Windows.Data.Binding("Padding"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
   border.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
@@ -101,30 +99,42 @@ public sealed class NativeStore:Grid{
   }
   statusText.Text="Загрузка списка желаемого Steam…";
   try{
-   var json=await Http.GetStringAsync($"https://store.steampowered.com/wishlist/profiles/{steamId}/wishlistdata/?p=0");
+   var json=await Http.GetStringAsync($"https://api.steampowered.com/IWishlistService/GetWishlist/v1/?steamid={steamId}");
    using var doc=JsonDocument.Parse(json);
+   var appIds=new List<string>();
+   if(doc.RootElement.TryGetProperty("response",out var resp)&&resp.TryGetProperty("items",out var items)){
+    foreach(var it in items.EnumerateArray()){
+     if(it.TryGetProperty("appid",out var ap))appIds.Add(ap.ToString());
+     if(appIds.Count>=30)break;
+    }
+   }
    var list=new List<StoreItem>();
-   if(doc.RootElement.ValueKind==JsonValueKind.Object){
-    foreach(var prop in doc.RootElement.EnumerateObject()){
-     string id=prop.Name;
-     var it=prop.Value;
-     if(it.ValueKind!=JsonValueKind.Object)continue;
-     string name=it.TryGetProperty("name",out var np)?np.GetString()??"":"";
-     string img=it.TryGetProperty("capsule",out var ip)?ip.GetString()??"":"";
-     if(string.IsNullOrEmpty(img))img=$"https://shared.fastly.steamstatic.com/steam/apps/{id}/header.jpg";
-     string price="В желаемом";string disc="";
-     if(it.TryGetProperty("subs",out var subs)&&subs.ValueKind==JsonValueKind.Array&&subs.GetArrayLength()>0){
-      var s0=subs[0];
-      if(s0.TryGetProperty("price",out var pp)&&pp.TryGetInt32(out var pv))price=pv==0?"Бесплатно":$"{pv/100.0:0.##}";
-      if(s0.TryGetProperty("discount_pct",out var dp)&&dp.TryGetInt32(out var dv)&&dv>0)disc=$"-{dv}%";
+   if(appIds.Count>0){
+    var idsParam=string.Join(",",appIds);
+    try{
+     var detailsJson=await Http.GetStringAsync($"https://store.steampowered.com/api/appdetails?appids={idsParam}&filters=basic,price_overview&l=russian&cc=RU");
+     using var ddoc=JsonDocument.Parse(detailsJson);
+     foreach(var id in appIds){
+      string name=$"Steam App {id}";string price="В желаемом";string disc="";
+      string img=$"https://shared.fastly.steamstatic.com/steam/apps/{id}/header.jpg";
+      if(ddoc.RootElement.TryGetProperty(id,out var entry)&&entry.TryGetProperty("success",out var ok)&&ok.GetBoolean()&&entry.TryGetProperty("data",out var data)){
+       if(data.TryGetProperty("name",out var np)&&np.GetString() is {Length:>0} n)name=n;
+       if(data.TryGetProperty("header_image",out var hp)&&hp.GetString() is {Length:>0} h)img=h;
+       if(data.TryGetProperty("price_overview",out var po)){
+        if(po.TryGetProperty("final_formatted",out var ff)&&ff.GetString() is {Length:>0} f)price=f;
+        if(po.TryGetProperty("discount_percent",out var dp)&&dp.TryGetInt32(out var dv)&&dv>0)disc=$"-{dv}%";
+       }
+      }
+      list.Add(new StoreItem(id,name,img,price,disc,getOwnership(id)));
      }
-     if(id.Length>0&&name.Length>0)list.Add(new StoreItem(id,name,img,price,disc,getOwnership(id)));
+    }catch{
+     foreach(var id in appIds)list.Add(new StoreItem(id,$"Steam App {id}",$"https://shared.fastly.steamstatic.com/steam/apps/{id}/header.jpg","В желаемом","",getOwnership(id)));
     }
    }
    grid.ItemsSource=list;
    if(list.Count>0){grid.SelectedIndex=0;FocusGrid();}
-   statusText.Text=list.Count>0?$"В желаемом: {list.Count} · LB/RB — категории · Y — поиск · A — карточка · B — назад":"Список желаемого пуст или скрыт настройками приватности Steam.";
-  }catch{statusText.Text="Не удалось загрузить список желаемого. Проверьте приватность профиля Steam.";}
+   statusText.Text=list.Count>0?$"В желаемом: {list.Count} · LT/RT — категории · Y — поиск · A — карточка":"Список желаемого пуст или скрыт в настройках приватности Steam.";
+  }catch{statusText.Text="Не удалось загрузить список желаемого Steam.";}
  }
  async Task LoadCategoryAsync(int cat){
   activeCat=Math.Clamp(cat,0,4);
@@ -151,7 +161,7 @@ public sealed class NativeStore:Grid{
    }
    grid.ItemsSource=list;
    if(list.Count>0){grid.SelectedIndex=0;FocusGrid();}
-   statusText.Text=list.Count>0?$"Показано игр: {list.Count} · LB/RB — категории · Y — поиск · A — карточка · B — назад":"Подборка временно недоступна.";
+   statusText.Text=list.Count>0?$"Показано игр: {list.Count} · LT/RT — категории · Y — поиск · A — карточка":"Подборка временно недоступна.";
   }catch{statusText.Text="Не удалось загрузить витрину Steam. Можно открыть веб-версию справа.";}
  }
  async Task SearchAsync(string term){
@@ -174,7 +184,7 @@ public sealed class NativeStore:Grid{
    }
    grid.ItemsSource=list;
    if(list.Count>0){grid.SelectedIndex=0;FocusGrid();}
-   statusText.Text=list.Count>0?$"Найдено: {list.Count} · Y — новый поиск · A — карточка · B — назад":"Ничего не найдено.";
+   statusText.Text=list.Count>0?$"Найдено: {list.Count} · Y — новый поиск · A — карточка":"Ничего не найдено.";
   }catch{statusText.Text="Поиск временно недоступен.";}
  }
  async void ThumbLoaded(object sender,RoutedEventArgs e){
@@ -196,8 +206,8 @@ public sealed class NativeStore:Grid{
  public bool HandlePad(int code,bool swapped){
   int confirm=swapped?1:0,back=swapped?0:1;
   if(code==back){goBack();return true;}
-  if(code==9){_=LoadCategoryAsync((activeCat+4)%5);return true;}
-  if(code==10){_=LoadCategoryAsync((activeCat+1)%5);return true;}
+  if(code==103){_=LoadCategoryAsync((activeCat+4)%5);return true;}
+  if(code==104){_=LoadCategoryAsync((activeCat+1)%5);return true;}
   if(code==3){TriggerSearch();return true;}
   if(code==confirm&&grid.SelectedItem is StoreItem item){openGame(item);return true;}
   if(code>=11&&code<=14&&grid.Items.Count>0){

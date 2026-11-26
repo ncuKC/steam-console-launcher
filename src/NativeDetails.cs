@@ -45,10 +45,10 @@ public sealed class NativeDetails:Grid,IDisposable{
   header.Children.Add(new TextBlock{Text=game.State.ToUpperInvariant()+" · STEAM",FontSize=14,Foreground=B("#D9A86C"),Margin=new Thickness(0,0,0,6)});
   header.Children.Add(new TextBlock{Text=game.Name,FontSize=42,FontWeight=FontWeights.SemiBold,Foreground=B("#F2EFEA"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,0,0,16)});
   var tabBar=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,0,8)};header.Children.Add(tabBar);
-  tabBar.Children.Add(new TextBlock{Text="LB",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)});
+  tabBar.Children.Add(new TextBlock{Text="LT",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,12,0)});
   string[] names={"Обзор","Медиа","Описание","Отзывы"};
   for(int i=0;i<4;i++){int tabIndex=i;tabButtons[i]=TabBtn(names[i],()=>SelectTab(tabIndex));tabBar.Children.Add(tabButtons[i]);}
-  tabBar.Children.Add(new TextBlock{Text="RB",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(4,0,0,0)});
+  tabBar.Children.Add(new TextBlock{Text="RT",FontSize=13,Foreground=B("#A8A49E"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(4,0,0,0)});
   header.Children.Add(new Border{Height=1,Background=B("#262A32")});
   Grid.SetRow(scroll,2);Children.Add(scroll);
   var loading=AddText(overviewPanel,"Загрузка описания…",20,"#C6C2BC");
@@ -109,7 +109,7 @@ public sealed class NativeDetails:Grid,IDisposable{
  async Task Picture(Image image,string url,int version=-1){if(!Safe(url))return;try{await Images.WaitAsync(cancel.Token);try{var bytes=await Http.GetByteArrayAsync(url,cancel.Token);var result=await Task.Run(()=>{using var stream=new MemoryStream(bytes);var b=new BitmapImage();b.BeginInit();b.CacheOption=BitmapCacheOption.OnLoad;b.DecodePixelWidth=1600;b.StreamSource=stream;b.EndInit();b.Freeze();return b;});if(!disposed&&(version<0||version==imageVersion))image.Source=result;}finally{Images.Release();}}catch{}}
  void OpenShot(int at){if(shots.Count==0)return;if(viewer.Visibility!=Visibility.Visible)lastFocus=Keyboard.FocusedElement as UIElement;index=(at+shots.Count)%shots.Count;movie.Stop();movie.Visibility=Visibility.Collapsed;full.Visibility=Visibility.Visible;viewer.Visibility=Visibility.Visible;full.Source=null;_=Picture(full,shots[index],++imageVersion);Experience.Transition(viewer);viewer.MoveFocus(new(FocusNavigationDirection.First));}
  void Step(int delta){if(movie.Visibility!=Visibility.Visible)OpenShot(index+delta);}
- public bool HandlePad(int code){if(viewer.Visibility==Visibility.Visible){if(code==13){Step(-1);return true;}if(code==14){Step(1);return true;}return code==101||code==102;}if(code==9){SelectTab(activeTab-1);Experience.Play("move");return true;}if(code==10){SelectTab(activeTab+1);Experience.Play("move");return true;}if(code==101||code==102){scroll.ScrollToVerticalOffset(scroll.VerticalOffset+(code==101?-28:28));return true;}return false;}
+ public bool HandlePad(int code){if(viewer.Visibility==Visibility.Visible){if(code==13){Step(-1);return true;}if(code==14){Step(1);return true;}return code==101||code==102;}if(code==103){SelectTab(activeTab-1);Experience.Play("move");return true;}if(code==104){SelectTab(activeTab+1);Experience.Play("move");return true;}if(code==101||code==102){scroll.ScrollToVerticalOffset(scroll.VerticalOffset+(code==101?-28:28));return true;}return false;}
  public bool HandleBack(){if(viewer.Visibility!=Visibility.Visible)return false;movie.Stop();viewer.Visibility=Visibility.Collapsed;Experience.Play("back");lastFocus?.Focus();return true;}
  public void Dispose(){if(disposed)return;disposed=true;cancel.Cancel();movie.Stop();}
 }
