@@ -25,7 +25,6 @@ jobs:
       - name: Integrate application
         shell: pwsh
         run: |
-          ./tools/Apply-NativeContent.ps1
           ./tools/Apply-ConsoleUX.ps1
           ./tools/Apply-Usability.ps1
           ./tools/Apply-ReleaseUX.ps1
