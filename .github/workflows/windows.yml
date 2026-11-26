@@ -25,7 +25,7 @@ jobs:
       - name: Integrate application
         shell: pwsh
         run: |
-          ./tools/Apply-ConsoleUX.ps1
+          ./tools/Make-Icon.ps1
           ./tools/Apply-Usability.ps1
           ./tools/Apply-ReleaseUX.ps1
       - name: Set build version
