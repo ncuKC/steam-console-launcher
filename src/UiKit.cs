@@ -8,7 +8,7 @@ using System.Windows.Media;
 using System.Windows.Threading;
 namespace ConsoleLauncher;
 public static class UiKit{
- static UiKit(){EventManager.RegisterClassHandler(typeof(LauncherWindow),FrameworkElement.LoadedEvent,new RoutedEventHandler((sender,args)=>{if(sender is LauncherWindow window&&ReferenceEquals(sender,args.OriginalSource))window.Dispatcher.BeginInvoke(new Action(window.PolishVisibleLayout),DispatcherPriority.ContextIdle);}));}
+ static UiKit(){EventManager.RegisterClassHandler(typeof(LauncherWindow),FrameworkElement.LoadedEvent,new RoutedEventHandler((sender,args)=>{if(sender is LauncherWindow window&&ReferenceEquals(sender,args.OriginalSource)){window.Dispatcher.BeginInvoke(new Action(window.PolishVisibleLayout),DispatcherPriority.ContextIdle);window.Dispatcher.BeginInvoke(new Action(window.InitXboxStyle),DispatcherPriority.ApplicationIdle);}}));}
  static Brush B(string color)=>(Brush)new BrushConverter().ConvertFromString(color)!;
  public static Button Make(string caption,Action action,bool primary=false){
   var b=new Button{Content=caption,Padding=new Thickness(22,12,22,12),Margin=new Thickness(0,0,12,12),FontSize=18,Cursor=System.Windows.Input.Cursors.Hand,Background=B(primary?"#81D3FF":"#182230"),Foreground=primary?B("#081421"):Brushes.White};
@@ -40,7 +40,7 @@ public static class UiKit{
 }
 public partial class LauncherWindow{
  bool? configuredLayout;
- void MarkTabs(){if(shell.Children.Count==0||shell.Children[0] is not DockPanel nav)return;foreach(var group in nav.Children.OfType<StackPanel>())foreach(var b in group.Children.OfType<System.Windows.Controls.Button>()){string text=b.Content as string??"";bool active=text=="Главная"?page!="store"&&home:text=="Библиотека"?page!="store"&&!home:text=="Магазин"&&page=="store";b.Tag=active?"active":null;}}
+ void MarkTabs(){if(shell.Children.Count==0||shell.Children[0] is not DockPanel nav)return;bool inStore=page=="store"||page=="native_store";foreach(var group in nav.Children.OfType<StackPanel>())foreach(var b in group.Children.OfType<System.Windows.Controls.Button>()){string text=b.Content as string??"";bool active=text=="Главная"?!inStore&&home:text=="Библиотека"?!inStore&&!home:text=="Магазин"&&inStore;b.Tag=active?"active":null;}}
  bool RouteExtraInput(int code){if(page=="details"&&nativeContent?.HandlePad(code)==true)return true;if(code!=101&&code!=102)return false;if(page=="library"){var scroll=FindScroll(list);if(scroll!=null){double delta=code==101?-24:24;if(home)scroll.ScrollToHorizontalOffset(scroll.HorizontalOffset+delta);else scroll.ScrollToVerticalOffset(scroll.VerticalOffset+delta);}return true;}return true;}
  static ScrollViewer? FindScroll(DependencyObject root){if(root is ScrollViewer s)return s;for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++){var found=FindScroll(VisualTreeHelper.GetChild(root,i));if(found!=null)return found;}return null;}
 }

@@ -1,0 +1,44 @@
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
+using WpfButton=System.Windows.Controls.Button;
+namespace ConsoleLauncher;
+public partial class LauncherWindow{
+ bool xboxStyleReady,xboxStyling;
+ internal void InitXboxStyle(){
+  if(xboxStyleReady)return;xboxStyleReady=true;
+  detail.LayoutUpdated+=(_,_)=>StyleLauncherMenu();
+ }
+ void StyleLauncherMenu(){
+  if(xboxStyling||!detail.IsVisible)return;
+  if(!detail.Children.OfType<TextBlock>().Any(t=>t.Text=="Меню лаунчера"))return;
+  xboxStyling=true;
+  try{
+   detail.Margin=new Thickness(96,40,96,40);
+   foreach(var child in detail.Children.OfType<FrameworkElement>().ToList()){
+    if(child.Resources.Contains("xbox"))continue;
+    child.Resources["xbox"]=true;
+    if(child is WpfButton button)RestyleMenuButton(button);
+    else if(child is TextBlock text){
+     if(text.Text=="Меню лаунчера"){text.FontSize=40;text.FontWeight=FontWeights.SemiBold;text.Foreground=B("#F2EFEA");text.Margin=new Thickness(0,0,0,22);}
+     else{text.FontSize=Math.Max(text.FontSize,19);text.Foreground=B("#C6C2BC");text.Margin=new Thickness(0,10,0,10);}
+    }
+   }
+  }finally{xboxStyling=false;}
+ }
+ static void RestyleMenuButton(WpfButton button){
+  button.HorizontalAlignment=HorizontalAlignment.Left;button.Width=560;button.MinHeight=46;button.FontSize=20;
+  button.Padding=new Thickness(24,9,24,9);button.Margin=new Thickness(0,0,0,8);
+  button.Background=B("#1C2028");button.Foreground=B("#F2EFEA");
+  var frame=new FrameworkElementFactory(typeof(Border));frame.Name="Frame";
+  frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(8));frame.SetValue(Border.BorderThicknessProperty,new Thickness(3));frame.SetValue(Border.BorderBrushProperty,Brushes.Transparent);
+  frame.SetBinding(Border.BackgroundProperty,new System.Windows.Data.Binding("Background"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
+  frame.SetBinding(Border.PaddingProperty,new System.Windows.Data.Binding("Padding"){RelativeSource=new(System.Windows.Data.RelativeSourceMode.TemplatedParent)});
+  var presenter=new FrameworkElementFactory(typeof(ContentPresenter));presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty,HorizontalAlignment.Left);presenter.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);
+  frame.AppendChild(presenter);
+  var template=new ControlTemplate(typeof(WpfButton)){VisualTree=frame};
+  var focus=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};focus.Setters.Add(new Setter(Border.BorderBrushProperty,Brushes.White,"Frame"));focus.Setters.Add(new Setter(Border.BackgroundProperty,B("#2A303B"),"Frame"));template.Triggers.Add(focus);
+  var disabled=new Trigger{Property=UIElement.IsEnabledProperty,Value=false};disabled.Setters.Add(new Setter(UIElement.OpacityProperty,.4,"Frame"));template.Triggers.Add(disabled);
+  button.Template=template;
+ }
+}

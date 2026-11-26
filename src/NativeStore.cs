@@ -11,6 +11,8 @@ public record StoreItem(string Id,string Name,string ImageUrl,string Price,strin
 public sealed class NativeStore:Grid{
  static readonly HttpClient Http=new(){Timeout=TimeSpan.FromSeconds(15)};
  static readonly SemaphoreSlim Gate=new(4);
+ static readonly SemaphoreSlim DetailsGate=new(4);
+ static readonly System.Collections.Concurrent.ConcurrentDictionary<string,StoreItem> WishCache=new();
  static Brush B(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
  readonly TextBox searchBox=new(){Width=300,FontSize=17,Background=B("#1A1E25"),Foreground=B("#F2EFEA"),CaretBrush=B("#D9933D"),BorderThickness=new Thickness(0),Padding=new Thickness(12,8,12,8),Margin=new Thickness(0,0,10,0)};
  readonly ListBox grid=new(){Background=Brushes.Transparent,BorderThickness=new Thickness(0),Padding=new Thickness(4,8,4,8)};
@@ -90,6 +92,29 @@ public sealed class NativeStore:Grid{
   var f=new Trigger{Property=UIElement.IsKeyboardFocusedProperty,Value=true};f.Setters.Add(new Setter(Border.BackgroundProperty,B("#382A1A"),"TabLine"));f.Setters.Add(new Setter(Border.BorderBrushProperty,B("#F0B462"),"TabLine"));t.Triggers.Add(f);
   b.Template=t;b.Click+=(_,_)=>action();return b;
  }
+ async Task<StoreItem> LoadWishItemAsync(string id){
+  if(WishCache.TryGetValue(id,out var cached))return cached with{Ownership=getOwnership(id)};
+  string name=$"Steam App {id}",price="В желаемом",disc="",img=$"https://shared.fastly.steamstatic.com/steam/apps/{id}/header.jpg";bool found=false;
+  await DetailsGate.WaitAsync();
+  try{
+   var json=await Http.GetStringAsync($"https://store.steampowered.com/api/appdetails?appids={id}&filters=basic,price_overview,release_date&l=russian&cc=RU");
+   using var doc=JsonDocument.Parse(json);
+   if(doc.RootElement.TryGetProperty(id,out var entry)&&entry.TryGetProperty("success",out var ok)&&ok.ValueKind==JsonValueKind.True&&entry.TryGetProperty("data",out var data)){
+    found=true;
+    if(data.TryGetProperty("name",out var np)&&np.GetString() is {Length:>0} n)name=n;
+    if(data.TryGetProperty("header_image",out var hp)&&hp.GetString() is {Length:>0} h)img=h;
+    if(data.TryGetProperty("is_free",out var fr)&&fr.ValueKind==JsonValueKind.True)price="Бесплатно";
+    if(data.TryGetProperty("release_date",out var rd)&&rd.TryGetProperty("coming_soon",out var cs)&&cs.ValueKind==JsonValueKind.True)price="Скоро";
+    if(data.TryGetProperty("price_overview",out var po)){
+     if(po.TryGetProperty("final_formatted",out var ff)&&ff.GetString() is {Length:>0} fmt)price=fmt;
+     if(po.TryGetProperty("discount_percent",out var dp)&&dp.TryGetInt32(out var dv)&&dv>0)disc=$"-{dv}%";
+    }
+   }
+  }catch{}finally{DetailsGate.Release();}
+  var item=new StoreItem(id,name,img,price,disc,getOwnership(id));
+  if(found)WishCache[id]=item;
+  return item;
+ }
  async Task LoadWishlistAsync(){
   var steamId=getSteamId();
   if(string.IsNullOrWhiteSpace(steamId)){
@@ -108,29 +133,9 @@ public sealed class NativeStore:Grid{
      if(appIds.Count>=30)break;
     }
    }
-   var list=new List<StoreItem>();
-   if(appIds.Count>0){
-    var idsParam=string.Join(",",appIds);
-    try{
-     var detailsJson=await Http.GetStringAsync($"https://store.steampowered.com/api/appdetails?appids={idsParam}&filters=basic,price_overview&l=russian&cc=RU");
-     using var ddoc=JsonDocument.Parse(detailsJson);
-     foreach(var id in appIds){
-      string name=$"Steam App {id}";string price="В желаемом";string disc="";
-      string img=$"https://shared.fastly.steamstatic.com/steam/apps/{id}/header.jpg";
-      if(ddoc.RootElement.TryGetProperty(id,out var entry)&&entry.TryGetProperty("success",out var ok)&&ok.GetBoolean()&&entry.TryGetProperty("data",out var data)){
-       if(data.TryGetProperty("name",out var np)&&np.GetString() is {Length:>0} n)name=n;
-       if(data.TryGetProperty("header_image",out var hp)&&hp.GetString() is {Length:>0} h)img=h;
-       if(data.TryGetProperty("price_overview",out var po)){
-        if(po.TryGetProperty("final_formatted",out var ff)&&ff.GetString() is {Length:>0} f)price=f;
-        if(po.TryGetProperty("discount_percent",out var dp)&&dp.TryGetInt32(out var dv)&&dv>0)disc=$"-{dv}%";
-       }
-      }
-      list.Add(new StoreItem(id,name,img,price,disc,getOwnership(id)));
-     }
-    }catch{
-     foreach(var id in appIds)list.Add(new StoreItem(id,$"Steam App {id}",$"https://shared.fastly.steamstatic.com/steam/apps/{id}/header.jpg","В желаемом","",getOwnership(id)));
-    }
-   }
+   statusText.Text=$"Загрузка карточек: {appIds.Count}…";
+   var list=(await Task.WhenAll(appIds.Select(LoadWishItemAsync))).ToList();
+   if(activeCat!=4)return;
    grid.ItemsSource=list;
    if(list.Count>0){grid.SelectedIndex=0;FocusGrid();}
    statusText.Text=list.Count>0?$"В желаемом: {list.Count} · LT/RT — категории · Y — поиск · A — карточка":"Список желаемого пуст или скрыт в настройках приватности Steam.";
