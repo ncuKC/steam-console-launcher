@@ -5,6 +5,7 @@ using WpfButton=System.Windows.Controls.Button;
 namespace ConsoleLauncher;
 public partial class LauncherWindow{
  bool xboxStyleReady,xboxStyling;
+ static bool IsMenuTitle(string? text)=>text=="Меню лаунчера"||text=="Игра"||text=="Звук и вид"||text=="Steam и библиотека"||text=="Обновления лаунчера"||text=="Питание ПК";
  internal void InitXboxStyle(){
   if(xboxStyleReady)return;xboxStyleReady=true;
   detail.LayoutUpdated+=(_,_)=>StyleLauncherMenu();
@@ -12,7 +13,7 @@ public partial class LauncherWindow{
  }
  void StyleLauncherMenu(){
   if(xboxStyling||!detail.IsVisible)return;
-  bool isMenu=detail.Children.OfType<TextBlock>().Any(t=>t.Text=="Меню лаунчера");
+  bool isMenu=detail.Children.OfType<TextBlock>().Any(t=>IsMenuTitle(t.Text));
   xboxStyling=true;
   try{
    if(!isMenu){
@@ -31,7 +32,7 @@ public partial class LauncherWindow{
     child.Resources["xbox"]=true;
     if(child is WpfButton button)RestyleMenuButton(button);
     else if(child is TextBlock text){
-     if(text.Text=="Меню лаунчера"){text.FontSize=40;text.FontWeight=FontWeights.SemiBold;text.Foreground=B("#FFFFFF");text.Margin=new Thickness(48,40,48,22);}
+     if(IsMenuTitle(text.Text)){text.FontSize=40;text.FontWeight=FontWeights.SemiBold;text.Foreground=B("#FFFFFF");text.Margin=new Thickness(48,40,48,22);}
      else{text.FontSize=Math.Max(text.FontSize,19);text.Foreground=B("#C6D4DF");text.Margin=new Thickness(48,10,48,10);text.MaxWidth=600;}
     }
    }

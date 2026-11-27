@@ -39,8 +39,9 @@ public partial class LauncherWindow{
  }
  void SectionFocus(){detail.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));}
  void AddAutostartItem(){
-  string Caption()=>"Запуск вместе с Windows: "+(Autostart.Enabled?"вкл":"выкл");
+  string Caption()=>"Запуск при входе в Windows: "+(Autostart.Enabled?"включён":"выключен");
   var toggle=Button(Caption(),()=>{});
+  toggle.Tag="standalone-startup";
   toggle.Click+=(_,_)=>{Autostart.Set(!Autostart.Enabled);toggle.Content=Caption();};
   SectionItem(toggle);
  }
