@@ -45,7 +45,7 @@ public sealed class NativeDetails:Grid,IDisposable{
   var buttons=new WrapPanel();left.Children.Add(buttons);
   var backButton=Btn("Назад",back);
   var playButton=Btn(game.Installed?"Играть":"Установить",launch,true);
-  var buyButton=Btn(game.Installed?"Страница в магазине":"Купить в Steam",()=>{_=store();});
+  var buyButton=Btn("Страница в Steam",()=>{_=store();});
   buttons.Children.Add(backButton);buttons.Children.Add(playButton);buttons.Children.Add(buyButton);
   rows.Add(new List<Control>{backButton,playButton,buyButton});
   var bannerFrame=new Border{CornerRadius=new CornerRadius(6),ClipToBounds=true,Margin=new Thickness(32,0,0,0),Background=B("#16202D"),VerticalAlignment=VerticalAlignment.Top,Child=banner};Grid.SetColumn(bannerFrame,1);header.Children.Add(bannerFrame);
