@@ -103,7 +103,7 @@ public partial class LauncherWindow{
   if(Keyboard.FocusedElement is System.Windows.Controls.Button focused){if(top.Contains(focused)){inputZone=0;inputIndex=top.IndexOf(focused);}else if(actions.Contains(focused)){inputZone=1;inputIndex=actions.IndexOf(focused);}}else if(list.IsKeyboardFocusWithin)inputZone=2;
   if(code==confirm){if(inputZone==0&&top.Count>0)ActivateInputControl(top[Math.Clamp(inputIndex,0,top.Count-1)]);else if(inputZone==1&&actions.Count>0)ActivateInputControl(actions[Math.Clamp(inputIndex,0,actions.Count-1)]);else Details();return true;}
   if(code<11||code>14)return false;
-  if(inputZone==2){int columns=home?1:Math.Max(1,(int)(list.ActualWidth/240));if(code==11&&(home||list.SelectedIndex<columns)){inputZone=home?1:0;inputIndex=0;}else{int delta=code==13?-1:code==14?1:code==11?-columns:columns;if(list.Items.Count>0){list.SelectedIndex=Math.Clamp(list.SelectedIndex+delta,0,list.Items.Count-1);list.ScrollIntoView(list.SelectedItem);FocusSelected();}return true;}}
+  if(inputZone==2){int columns=home?1:TileColumns();if(code==11&&(home||list.SelectedIndex<columns)){inputZone=home?1:0;inputIndex=0;}else{int delta=code==13?-1:code==14?1:code==11?-columns:columns;if(list.Items.Count>0){list.SelectedIndex=Math.Clamp(list.SelectedIndex+delta,0,list.Items.Count-1);list.ScrollIntoView(list.SelectedItem);FocusSelected();}return true;}}
   else if(code==11){inputZone=0;inputIndex=0;}else if(code==12){inputZone=inputZone==0&&home?1:2;inputIndex=0;}else inputIndex+=code==13?-1:1;
   if(inputZone==2)FocusSelected();else{var buttons=inputZone==0?top:actions;if(buttons.Count>0){inputIndex=Math.Clamp(inputIndex,0,buttons.Count-1);buttons[inputIndex].Focus();}}return true;
  }
