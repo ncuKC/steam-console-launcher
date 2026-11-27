@@ -29,17 +29,56 @@ public partial class LauncherWindow{
  void ConfigureConsoleView(){if(!consoleReady)return;ConfigureScene();}
  void AnimateConsoleCard(){if(previousCard!=null)ScaleCard(previousCard,1);if(list.SelectedItem!=null&&list.ItemContainerGenerator.ContainerFromItem(list.SelectedItem) is ListBoxItem current){ScaleCard(current,1.04);previousCard=current;}}
  static void ScaleCard(ListBoxItem card,double value){card.RenderTransform=Transform.Identity;}
+ bool menuSub;
+ void SectionItem(System.Windows.Controls.Button b){b.HorizontalAlignment=HorizontalAlignment.Left;b.Margin=new Thickness(0,0,0,16);detail.Children.Add(b);}
+ void SectionPage(string caption,bool root=false){
+  menuSub=!root;nativeContent?.Dispose();nativeContent=null;detail.Children.Clear();detail.Margin=new Thickness(60);
+  detail.Children.Add(new TextBlock{Text=caption,FontSize=36,Foreground=Brushes.White,Margin=new Thickness(0,0,0,28)});
+  Action backAction=root?(Action)CloseReleaseMenu:OpenConsoleSettings;
+  SectionItem(Button(root?"Закрыть меню":"Назад",backAction));
+ }
+ void SectionFocus(){detail.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));}
  void OpenConsoleSettings(){
-  nativeContent?.Dispose();nativeContent=null;detail.Children.Clear();detail.Margin=new Thickness(60);
-  detail.Children.Add(new TextBlock{Text="Меню лаунчера",FontSize=36,Foreground=Brushes.White,Margin=new Thickness(0,0,0,28)});
-  void AddItem(System.Windows.Controls.Button b){b.HorizontalAlignment=HorizontalAlignment.Left;b.Margin=new Thickness(0,0,0,16);detail.Children.Add(b);}
-  foreach(var pair in new (string,Action)[]{("Назад",CloseReleaseMenu),("Аккаунт Steam",Account),("Обновить библиотеку",async()=>await Reload())})AddItem(Button(pair.Item1,pair.Item2));
+  SectionPage("Меню лаунчера",true);
+  SectionItem(Button("Игра",OpenGameSection));
+  SectionItem(Button("Звук и вид",OpenSoundSection));
+  SectionItem(Button("Steam и библиотека",OpenSteamSection));
+  SectionItem(Button("Обновления лаунчера",OpenUpdateSection));
+  SectionItem(Button("Питание ПК",OpenPowerMenu));
+  SectionItem(Button("Выйти из лаунчера",Close));
+  Show("details");SectionFocus();
+ }
+ void OpenGameSection(){
+  SectionPage("Игра");
+  var msg=new TextBlock{Text="Back+Start в игре сворачивает её и открывает лаунчер. Отсюда можно закрыть свёрнутую игру.",FontSize=16,Foreground=B("#8F98A0"),TextWrapping=TextWrapping.Wrap,MaxWidth=700,Margin=new Thickness(0,0,0,18)};
+  detail.Children.Add(msg);
+  SectionItem(Button("Закрыть свёрнутую игру",()=>{msg.Text=GameReturn.CloseLast()?"Игре отправлена команда закрытия. Если она спросит про сохранение, ответьте в окне игры.":"Свёрнутой игры нет. Сначала нажмите Back+Start в игре.";}));
+  SectionFocus();
+ }
+ void OpenSoundSection(){
+  SectionPage("Звук и вид");
   string VolumeCaption()=>"Громкость интерфейса: "+(Experience.Volume<=0?"выкл":Math.Round(Experience.Volume*100)+"%");
   string MotionCaption()=>"Анимации: "+(Experience.ReducedMotion?"выкл":"вкл");
-  var volume=Button(VolumeCaption(),()=>{});volume.Click+=(_,_)=>{Experience.CycleVolume();volume.Content=VolumeCaption();Experience.Play("move");};AddItem(volume);
-  var motion=Button(MotionCaption(),()=>{});motion.Click+=(_,_)=>{Experience.ToggleMotion();motion.Content=MotionCaption();};AddItem(motion);
-  foreach(var pair in new (string,Action)[]{("Поменять подтверждение / отмену",()=>swapped=!swapped),("Выйти из лаунчера",Close)})AddItem(Button(pair.Item1,pair.Item2));
-  AddReleaseMenu();Show("details");detail.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));
+  var volume=Button(VolumeCaption(),()=>{});volume.Click+=(_,_)=>{Experience.CycleVolume();volume.Content=VolumeCaption();Experience.Play("move");};SectionItem(volume);
+  var motion=Button(MotionCaption(),()=>{});motion.Click+=(_,_)=>{Experience.ToggleMotion();motion.Content=MotionCaption();};SectionItem(motion);
+  SectionItem(Button("Поменять подтверждение / отмену",()=>swapped=!swapped));
+  SectionFocus();
+ }
+ void OpenSteamSection(){
+  SectionPage("Steam и библиотека");
+  AddSteamAuthMenu();
+  if(detail.Children.Count>0)detail.Children.RemoveAt(detail.Children.Count-1);
+  SectionItem(Button("Обновить библиотеку",async()=>await Reload()));
+  SectionItem(Button("Импорт по ключу API (запасной способ)",Account));
+  SectionFocus();
+ }
+ void OpenUpdateSection(){
+  SectionPage("Обновления лаунчера");
+  detail.Children.Add(new TextBlock{Text="Версия: "+BuildVersion,FontSize=16,Margin=new Thickness(0,0,0,12)});
+  if(updateStatus.Parent is Panel old)old.Children.Remove(updateStatus);detail.Children.Add(updateStatus);AttachDownloadProgress();
+  detail.Children.Add(Button("Проверить обновления лаунчера",async()=>await CheckLauncherUpdates(true)));
+  detail.Children.Add(Button("Скачать обновление и перезапустить",async()=>await InstallLauncherUpdate()));
+  SectionFocus();
  }
  void WatchSession(string id){sessionTimer.Stop();sessionId=id;sessionSeen=false;sessionZeros=0;sessionRequested=DateTime.UtcNow;sessionTimer.Start();}
  void CheckSession(){if(sessionId==null){sessionTimer.Stop();return;}try{
