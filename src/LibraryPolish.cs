@@ -4,15 +4,38 @@ using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 namespace ConsoleLauncher;
 public partial class LauncherWindow{
  bool libraryPolished,countBusy;
+ static readonly System.Collections.Concurrent.ConcurrentDictionary<string,Lazy<Task<BitmapImage?>>> WideImages=new();
+ static Task<BitmapImage?> WideArt(string id)=>WideImages.GetOrAdd(id,_=>new Lazy<Task<BitmapImage?>>(()=>LoadWide(id))).Value;
+ static async Task<BitmapImage?> LoadWide(string id){
+  await Gate.WaitAsync();
+  try{
+   var folder=Path.Combine(Root,"artwork");var file=Path.Combine(folder,id+"_wide.bin");
+   if(File.Exists(file))try{var saved=await File.ReadAllBytesAsync(file);return await Task.Run(()=>Decode(saved,false));}catch{try{File.Delete(file);}catch{}}
+   foreach(var name in new[]{"capsule_616x353.jpg","header.jpg"})foreach(var host in new[]{"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"})try{
+    var data=await Http.GetByteArrayAsync(host+"/steam/apps/"+id+"/"+name);
+    var image=await Task.Run(()=>Decode(data,false));
+    try{Directory.CreateDirectory(folder);await File.WriteAllBytesAsync(file,data);}catch{}
+    return image;
+   }catch{}
+   return null;
+  }finally{Gate.Release();}
+ }
+ async void WideCoverLoaded(object sender){
+  if(sender is Image image&&image.DataContext is Game g){
+   var art=await WideArt(g.Id);
+   if(image.DataContext is Game current&&current.Id==g.Id)image.Source=art;
+  }
+ }
  int TileColumns(){
   if(list.ItemContainerGenerator.ContainerFromIndex(0) is FrameworkElement first&&first.ActualWidth>0&&VisualTreeHelper.GetParent(first) is Panel panel&&panel.ActualWidth>0){
    double cell=first.ActualWidth+first.Margin.Left+first.Margin.Right;
    return Math.Max(1,(int)(panel.ActualWidth/cell+.01));
   }
-  return Math.Max(1,(int)(list.ActualWidth/290));
+  return Math.Max(1,(int)(list.ActualWidth/340));
  }
  void StyleLibraryTiles(){
   var frame=new FrameworkElementFactory(typeof(Border));frame.Name="Selection";
@@ -28,15 +51,14 @@ public partial class LauncherWindow{
   style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty,VerticalAlignment.Top));
   style.Setters.Add(new Setter(FrameworkElement.MarginProperty,new Thickness(6,10,24,28)));
   list.ItemContainerStyle=style;
-  var card=new FrameworkElementFactory(typeof(Border));card.SetValue(FrameworkElement.WidthProperty,236.0);card.SetValue(FrameworkElement.HeightProperty,354.0);card.SetValue(Border.BackgroundProperty,B("#16202D"));card.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));card.SetValue(UIElement.ClipToBoundsProperty,true);
+  var card=new FrameworkElementFactory(typeof(Border));card.SetValue(FrameworkElement.WidthProperty,292.0);card.SetValue(FrameworkElement.HeightProperty,164.0);card.SetValue(Border.BackgroundProperty,B("#16202D"));card.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));card.SetValue(UIElement.ClipToBoundsProperty,true);
   var stack=new FrameworkElementFactory(typeof(Grid));
-  var coverGrid=new FrameworkElementFactory(typeof(Grid));
   var placeholder=new FrameworkElementFactory(typeof(TextBlock));placeholder.SetBinding(TextBlock.TextProperty,new Binding("Name"));placeholder.SetValue(TextBlock.FontSizeProperty,22.0);placeholder.SetValue(TextBlock.ForegroundProperty,B("#8F98A0"));placeholder.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);placeholder.SetValue(TextBlock.TextAlignmentProperty,TextAlignment.Center);placeholder.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);placeholder.SetValue(FrameworkElement.MarginProperty,new Thickness(16));
-  var cover=new FrameworkElementFactory(typeof(Image));cover.SetValue(Image.StretchProperty,Stretch.UniformToFill);cover.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler((s,e)=>{CoverLoaded(s,e);HookCover(s);}));
-  coverGrid.AppendChild(placeholder);coverGrid.AppendChild(cover);stack.AppendChild(coverGrid);
-  var shade=new FrameworkElementFactory(typeof(Border));shade.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Bottom);shade.SetValue(FrameworkElement.HeightProperty,120.0);shade.SetValue(UIElement.IsHitTestVisibleProperty,false);shade.SetValue(Border.BackgroundProperty,new LinearGradientBrush(Color.FromArgb(0,16,20,25),Color.FromArgb(235,16,20,25),90));
+  var cover=new FrameworkElementFactory(typeof(Image));cover.SetValue(Image.StretchProperty,Stretch.UniformToFill);cover.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler((s,e)=>WideCoverLoaded(s)));
+  stack.AppendChild(placeholder);stack.AppendChild(cover);
+  var shade=new FrameworkElementFactory(typeof(Border));shade.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Bottom);shade.SetValue(FrameworkElement.HeightProperty,76.0);shade.SetValue(UIElement.IsHitTestVisibleProperty,false);shade.SetValue(Border.BackgroundProperty,new LinearGradientBrush(Color.FromArgb(0,16,20,25),Color.FromArgb(235,16,20,25),90));
   stack.AppendChild(shade);
-  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,20.0);name.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);name.SetValue(TextBlock.LineHeightProperty,26.0);name.SetValue(TextBlock.ForegroundProperty,Brushes.White);name.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.MaxHeightProperty,52.0);name.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Bottom);name.SetValue(FrameworkElement.MarginProperty,new Thickness(14,0,14,14));name.SetValue(UIElement.IsHitTestVisibleProperty,false);
+  var name=new FrameworkElementFactory(typeof(TextBlock));name.SetBinding(TextBlock.TextProperty,new Binding("Name"));name.SetValue(TextBlock.FontSizeProperty,19.0);name.SetValue(TextBlock.FontWeightProperty,FontWeights.SemiBold);name.SetValue(TextBlock.ForegroundProperty,Brushes.White);name.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);name.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Bottom);name.SetValue(FrameworkElement.MarginProperty,new Thickness(14,0,14,12));name.SetValue(UIElement.IsHitTestVisibleProperty,false);
   stack.AppendChild(name);
   card.AppendChild(stack);
   list.ItemTemplate=new DataTemplate{VisualTree=card};
