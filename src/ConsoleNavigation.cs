@@ -30,11 +30,7 @@ public partial class LauncherWindow{
  }
  void SetStoreOverlay(bool visible){
   if(nativeStoreView!=null)nativeStoreView.Visibility=visible?Visibility.Visible:Visibility.Collapsed;
-  if(shell.Children.Count>3){
-   shell.Children[1].Visibility=visible?Visibility.Collapsed:(home?Visibility.Visible:Visibility.Collapsed);
-   shell.Children[2].Visibility=visible?Visibility.Collapsed:Visibility.Visible;
-   shell.Children[3].Visibility=visible?Visibility.Collapsed:Visibility.Visible;
-  }
+  ApplyHomeVisibility(visible);
  }
  void OpenStoreItemDetails(StoreItem item){
   SetStoreOverlay(false);
@@ -89,6 +85,16 @@ public partial class LauncherWindow{
    if(code==confirm){ActivateInputControl(controls[detailIndex]);return true;}return code==2||code==3||code==103||code==104;
   }
   if(inputPage!=page){inputPage=page;inputZone=2;inputIndex=detailIndex=0;}
+  if(page=="library"&&home&&!menuVisible&&homeView!=null&&homeView.IsVisible){
+   var bar=(DockPanel)shell.Children[0];
+   bool inTop=Keyboard.FocusedElement is DependencyObject focusedNow&&bar.IsAncestorOf(focusedNow);
+   if(inTop){if(code==12){homeView.TakeFocus();return true;}}
+   else{
+    if(code==11&&homeView.AtTop){FocusTopBar(bar);return true;}
+    if(homeView.HandlePad(code))return true;
+    if(code==confirm){Details();return true;}
+   }
+  }
   if(code==back){if(menuVisible)CloseReleaseMenu();else{Back();Dispatcher.BeginInvoke(new Action(()=>{if(list.SelectedItem!=null)list.ScrollIntoView(list.SelectedItem);FocusSelected();}));}inputPage="";return true;}
   if(page=="store")return false;
   if(code==3){Tab(false);search.Focus();return true;}if(code==2){Launch();return true;}

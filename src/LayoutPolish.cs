@@ -9,6 +9,7 @@ using System.Windows.Threading;
 namespace ConsoleLauncher;
 public partial class LauncherWindow{
  bool layoutPolished,sceneReady;
+ HomeScreen? homeView;Border? leftShade;
  readonly DispatcherTimer sceneClock=new(){Interval=TimeSpan.FromMinutes(1)};
  void HookCover(object sender){
   if(sender is not Image img||img.Tag is "hooked")return;
@@ -27,6 +28,22 @@ public partial class LauncherWindow{
    back.Source=bitmap;
   }else if(back!=null)holder.Children.Remove(back);
  }
+ void SelectFromHome(Game game){
+  if(!list.Items.Contains(game))list.ItemsSource=games.ToList();
+  list.SelectedItem=game;
+ }
+ void FocusTopBar(DockPanel bar){
+  var all=bar.Children.OfType<StackPanel>().SelectMany(p=>p.Children.OfType<System.Windows.Controls.Button>()).Where(b=>b.IsVisible).ToList();
+  var target=all.FirstOrDefault(b=>(b.Tag as string)=="active")??all.FirstOrDefault();
+  target?.Focus();
+ }
+ void ApplyHomeVisibility(bool overlay){
+  if(!sceneReady||shell.Children.Count<4)return;
+  shell.Children[1].Visibility=Visibility.Collapsed;
+  shell.Children[2].Visibility=(overlay||home)?Visibility.Collapsed:Visibility.Visible;
+  shell.Children[3].Visibility=(overlay||home)?Visibility.Collapsed:Visibility.Visible;
+  if(homeView!=null)homeView.Visibility=(home&&!overlay)?Visibility.Visible:Visibility.Collapsed;
+ }
  internal void PolishVisibleLayout(){
   if(layoutPolished)return;layoutPolished=true;InitStandaloneUX();InitFixPack();
   var root=(Grid)Content;int slot=root.Children.IndexOf(shell);root.Children.Remove(shell);
@@ -37,7 +54,8 @@ public partial class LauncherWindow{
   Background=B("#171A21");
   foreach(var shade in root.Children.OfType<Border>())shade.Visibility=Visibility.Collapsed;
   int foreground=root.Children.IndexOf(root.Children.OfType<Viewbox>().First());
-  root.Children.Insert(foreground,new Border{IsHitTestVisible=false,Background=new LinearGradientBrush(new GradientStopCollection{new(Color.FromArgb(242,23,26,33),0),new(Color.FromArgb(165,23,26,33),.42),new(Color.FromArgb(12,23,26,33),1)},new Point(0,0),new Point(1,0))});
+  leftShade=new Border{IsHitTestVisible=false,Background=new LinearGradientBrush(new GradientStopCollection{new(Color.FromArgb(242,23,26,33),0),new(Color.FromArgb(165,23,26,33),.42),new(Color.FromArgb(12,23,26,33),1)},new Point(0,0),new Point(1,0))};
+  root.Children.Insert(foreground,leftShade);
   root.Children.Insert(foreground+1,new Border{IsHitTestVisible=false,Background=new LinearGradientBrush(new GradientStopCollection{new(Color.FromArgb(80,23,26,33),0),new(Color.FromArgb(8,23,26,33),.34),new(Color.FromArgb(230,23,26,33),.70),new(Color.FromArgb(255,23,26,33),1)},new Point(0,0),new Point(0,1))});
   var nav=new DockPanel{LastChildFill=true};shell.Children.Add(nav);
   var settings=new StackPanel{Orientation=Orientation.Horizontal};DockPanel.SetDock(settings,Dock.Right);nav.Children.Add(settings);
@@ -65,11 +83,15 @@ public partial class LauncherWindow{
   var platform=new FrameworkElementFactory(typeof(TextBlock));platform.SetBinding(TextBlock.TextProperty,new Binding("Platform"));platform.SetValue(TextBlock.FontSizeProperty,12.0);platform.SetValue(TextBlock.ForegroundProperty,B("#8F98A0"));platform.SetValue(FrameworkElement.MarginProperty,new Thickness(2,2,2,0));card.AppendChild(platform);
   list.ItemTemplate=new DataTemplate{VisualTree=card};
   var hints=new TextBlock{Text="A  Выбрать       B  Назад       X  Запустить       Y  Поиск       START  Меню",FontSize=16,Foreground=B("#8F98A0"),VerticalAlignment=VerticalAlignment.Bottom};Grid.SetRow(hints,4);shell.Children.Add(hints);
+  homeView=new HomeScreen(Artwork,SelectFromHome,Details,Launch);Grid.SetRow(homeView,1);Grid.SetRowSpan(homeView,3);shell.Children.Add(homeView);
+  list.SelectionChanged+=(_,_)=>homeView?.SyncSelection(Selected);
   list.SelectionChanged+=(_,_)=>{if(home)label.Text="ВЫБРАННАЯ ИГРА";};sceneReady=true;ConfigureScene();InitConsoleNavigation();MarkTabs();Dispatcher.BeginInvoke(new Action(FocusSelected));
  }
  void ConfigureScene(){
   if(!sceneReady)return;
-  shell.Children[1].Visibility=home?Visibility.Visible:Visibility.Collapsed;
+  ApplyHomeVisibility(page=="native_store");
+  if(home&&homeView!=null)homeView.SetGames(games,Selected?.Id);
+  if(leftShade!=null)leftShade.Opacity=home?.35:1;
   shell.RowDefinitions[1].Height=home?new GridLength(1,GridUnitType.Star):new GridLength(0);shell.RowDefinitions[2].Height=home?new GridLength(48):new GridLength(76);shell.RowDefinitions[3].Height=home?new GridLength(450):new GridLength(1,GridUnitType.Star);
   var panel=new FrameworkElementFactory(home?typeof(StackPanel):typeof(WrapPanel));if(home)panel.SetValue(StackPanel.OrientationProperty,Orientation.Horizontal);list.ItemsPanel=new ItemsPanelTemplate(panel);
   list.SetValue(ScrollViewer.HorizontalScrollBarVisibilityProperty,home?ScrollBarVisibility.Hidden:ScrollBarVisibility.Disabled);list.SetValue(ScrollViewer.VerticalScrollBarVisibilityProperty,home?ScrollBarVisibility.Disabled:ScrollBarVisibility.Auto);
