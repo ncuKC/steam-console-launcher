@@ -1,12 +1,32 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Media.Effects;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 namespace ConsoleLauncher;
 public partial class LauncherWindow{
  bool layoutPolished,sceneReady;
  readonly DispatcherTimer sceneClock=new(){Interval=TimeSpan.FromMinutes(1)};
+ void HookCover(object sender){
+  if(sender is not Image img||img.Tag is "hooked")return;
+  img.Tag="hooked";
+  DependencyPropertyDescriptor.FromProperty(Image.SourceProperty,typeof(Image)).AddValueChanged(img,(_,_)=>StyleCover(img));
+  StyleCover(img);
+ }
+ void StyleCover(Image img){
+  if(img.Source is not BitmapSource bitmap||img.Parent is not Grid holder)return;
+  bool landscape=bitmap.PixelWidth>bitmap.PixelHeight;
+  img.Stretch=landscape?Stretch.Uniform:Stretch.UniformToFill;
+  foreach(var text in holder.Children.OfType<TextBlock>())text.Visibility=Visibility.Collapsed;
+  var back=holder.Children.OfType<Image>().FirstOrDefault(i=>!ReferenceEquals(i,img));
+  if(landscape){
+   if(back==null){back=new Image{Stretch=Stretch.UniformToFill,Opacity=.55,Effect=new BlurEffect{Radius=30}};holder.Children.Insert(Math.Max(0,holder.Children.IndexOf(img)),back);}
+   back.Source=bitmap;
+  }else if(back!=null)holder.Children.Remove(back);
+ }
  internal void PolishVisibleLayout(){
   if(layoutPolished)return;layoutPolished=true;InitStandaloneUX();InitFixPack();
   var root=(Grid)Content;int slot=root.Children.IndexOf(shell);root.Children.Remove(shell);
@@ -39,14 +59,11 @@ public partial class LauncherWindow{
   Grid.SetRow(list,3);shell.Children.Add(list);list.Background=Brushes.Transparent;list.Padding=new Thickness(12,14,12,14);list.BorderThickness=new Thickness(0);list.SetValue(ScrollViewer.CanContentScrollProperty,false);
   var card=new FrameworkElementFactory(typeof(StackPanel));card.SetValue(FrameworkElement.WidthProperty,200.0);
   var artwork=new FrameworkElementFactory(typeof(Border));artwork.SetValue(FrameworkElement.HeightProperty,300.0);artwork.SetValue(Border.BackgroundProperty,B("#16202D"));artwork.SetValue(Border.CornerRadiusProperty,new CornerRadius(4));artwork.SetValue(UIElement.ClipToBoundsProperty,true);
-  var cover=new FrameworkElementFactory(typeof(Image));cover.SetValue(Image.StretchProperty,Stretch.UniformToFill);cover.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler(CoverLoaded));
+  var cover=new FrameworkElementFactory(typeof(Image));cover.SetValue(Image.StretchProperty,Stretch.UniformToFill);cover.AddHandler(FrameworkElement.LoadedEvent,new RoutedEventHandler((s,e)=>{CoverLoaded(s,e);HookCover(s);}));
   var coverStack=new FrameworkElementFactory(typeof(Grid));var coverName=new FrameworkElementFactory(typeof(TextBlock));coverName.SetBinding(TextBlock.TextProperty,new Binding("Name"));coverName.SetValue(TextBlock.FontSizeProperty,20.0);coverName.SetValue(TextBlock.ForegroundProperty,B("#8F98A0"));coverName.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);coverName.SetValue(TextBlock.TextAlignmentProperty,TextAlignment.Center);coverName.SetValue(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Center);coverName.SetValue(FrameworkElement.MarginProperty,new Thickness(14));coverStack.AppendChild(coverName);coverStack.AppendChild(cover);artwork.AppendChild(coverStack);card.AppendChild(artwork);
   var caption=new FrameworkElementFactory(typeof(TextBlock));caption.SetBinding(TextBlock.TextProperty,new Binding("Name"));caption.SetValue(TextBlock.FontSizeProperty,16.0);caption.SetValue(TextBlock.LineHeightProperty,20.0);caption.SetValue(TextBlock.ForegroundProperty,B("#FFFFFF"));caption.SetValue(TextBlock.TextWrappingProperty,TextWrapping.Wrap);caption.SetValue(TextBlock.TextTrimmingProperty,TextTrimming.CharacterEllipsis);caption.SetValue(FrameworkElement.HeightProperty,60.0);caption.SetValue(FrameworkElement.MarginProperty,new Thickness(2,8,2,0));card.AppendChild(caption);
   var platform=new FrameworkElementFactory(typeof(TextBlock));platform.SetBinding(TextBlock.TextProperty,new Binding("Platform"));platform.SetValue(TextBlock.FontSizeProperty,12.0);platform.SetValue(TextBlock.ForegroundProperty,B("#8F98A0"));platform.SetValue(FrameworkElement.MarginProperty,new Thickness(2,2,2,0));card.AppendChild(platform);
   list.ItemTemplate=new DataTemplate{VisualTree=card};
-  var frame=new FrameworkElementFactory(typeof(Border));frame.Name="Card";frame.SetValue(Border.BorderThicknessProperty,new Thickness(3));frame.SetValue(Border.BorderBrushProperty,Brushes.Transparent);frame.SetValue(Border.CornerRadiusProperty,new CornerRadius(6));frame.SetValue(Border.BackgroundProperty,Brushes.Transparent);frame.SetValue(Border.PaddingProperty,new Thickness(6));frame.SetValue(UIElement.RenderTransformOriginProperty,new Point(.5,.5));frame.AppendChild(new FrameworkElementFactory(typeof(ContentPresenter)));
-  var template=new ControlTemplate(typeof(ListBoxItem)){VisualTree=frame};var selected=new Trigger{Property=ListBoxItem.IsSelectedProperty,Value=true};selected.Setters.Add(new Setter(Border.BackgroundProperty,B("#1B2838"),"Card"));template.Triggers.Add(selected);var focused=new Trigger{Property=UIElement.IsKeyboardFocusWithinProperty,Value=true};focused.Setters.Add(new Setter(Border.BackgroundProperty,B("#2A475E"),"Card"));focused.Setters.Add(new Setter(Border.BorderBrushProperty,Brushes.White,"Card"));focused.Setters.Add(new Setter(UIElement.RenderTransformProperty,new ScaleTransform(1.05,1.05),"Card"));template.Triggers.Add(focused);
-  var style=new Style(typeof(ListBoxItem));style.Setters.Add(new Setter(Control.TemplateProperty,template));style.Setters.Add(new Setter(FrameworkElement.FocusVisualStyleProperty,null));style.Setters.Add(new Setter(Control.MarginProperty,new Thickness(0,0,16,12)));style.Setters.Add(new Setter(FrameworkElement.VerticalAlignmentProperty,VerticalAlignment.Top));style.Setters.Add(new Setter(Control.VerticalContentAlignmentProperty,VerticalAlignment.Top));list.ItemContainerStyle=style;
   var hints=new TextBlock{Text="A  Выбрать       B  Назад       X  Запустить       Y  Поиск       START  Меню",FontSize=16,Foreground=B("#8F98A0"),VerticalAlignment=VerticalAlignment.Bottom};Grid.SetRow(hints,4);shell.Children.Add(hints);
   list.SelectionChanged+=(_,_)=>{if(home)label.Text="ВЫБРАННАЯ ИГРА";};sceneReady=true;ConfigureScene();InitConsoleNavigation();MarkTabs();Dispatcher.BeginInvoke(new Action(FocusSelected));
  }

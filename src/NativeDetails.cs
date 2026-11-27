@@ -31,7 +31,9 @@ public sealed class NativeDetails:Grid,IDisposable{
  static string Plain(string s)=>WebUtility.HtmlDecode(Regex.Replace(Regex.Replace(s,@"<(br\s*/?|/p|/li|/div)>","\n",RegexOptions.IgnoreCase),"<[^>]+>",""));
  static bool Safe(string s)=>Uri.TryCreate(s,UriKind.Absolute,out var u)&&u.Scheme=="https"&&(u.Host.EndsWith(".steamstatic.com",StringComparison.OrdinalIgnoreCase)||u.Host.EndsWith(".akamaihd.net",StringComparison.OrdinalIgnoreCase));
  static IEnumerable<Button> Buttons(DependencyObject root){foreach(var child in LogicalTreeHelper.GetChildren(root)){if(child is Button b)yield return b;else if(child is DependencyObject d)foreach(var x in Buttons(d))yield return x;}}
+ void FitHeight(){if(!double.IsNaN(Height))return;var w=Window.GetWindow(this);if(w==null)return;double total=w.Content is FrameworkElement root&&root.ActualHeight>0?root.ActualHeight:w.ActualHeight;Height=Math.Max(400,total-Margin.Top-Margin.Bottom);}
  public NativeDetails(Game game,Action launch,Func<Task> store,Action back){
+  bool storeItem=game.Platform=="Магазин";
   Background=B("#171A21");
   RowDefinitions.Add(new(){Height=GridLength.Auto});
   RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
@@ -39,15 +41,15 @@ public sealed class NativeDetails:Grid,IDisposable{
   header.ColumnDefinitions.Add(new(){Width=new GridLength(1,GridUnitType.Star)});
   header.ColumnDefinitions.Add(new(){Width=GridLength.Auto});
   var left=new StackPanel();header.Children.Add(left);
-  left.Children.Add(new TextBlock{Text=game.State.ToUpperInvariant()+" · STEAM",FontSize=14,Foreground=B("#66C0F4"),Margin=new Thickness(0,0,0,6)});
+  left.Children.Add(new TextBlock{Text=storeItem?"МАГАЗИН STEAM":game.State.ToUpperInvariant()+" · STEAM",FontSize=14,Foreground=B("#66C0F4"),Margin=new Thickness(0,0,0,6)});
   left.Children.Add(new TextBlock{Text=game.Name,FontSize=44,FontWeight=FontWeights.SemiBold,Foreground=B("#FFFFFF"),TextWrapping=TextWrapping.Wrap});
   left.Children.Add(factsText);
   var buttons=new WrapPanel();left.Children.Add(buttons);
   var backButton=Btn("Назад",back);
-  var playButton=Btn(game.Installed?"Играть":"Установить",launch,true);
-  var buyButton=Btn("Страница в Steam",()=>{_=store();});
-  buttons.Children.Add(backButton);buttons.Children.Add(playButton);buttons.Children.Add(buyButton);
-  rows.Add(new List<Control>{backButton,playButton,buyButton});
+  var playButton=storeItem?Btn("Купить в Steam",()=>{_=store();},true):Btn(game.Installed?"Играть":"Установить через Steam",launch,true);
+  buttons.Children.Add(backButton);buttons.Children.Add(playButton);
+  if(storeItem)rows.Add(new List<Control>{backButton,playButton});
+  else{var pageButton=Btn("Страница в Steam",()=>{_=store();});buttons.Children.Add(pageButton);rows.Add(new List<Control>{backButton,playButton,pageButton});}
   var bannerFrame=new Border{CornerRadius=new CornerRadius(6),ClipToBounds=true,Margin=new Thickness(32,0,0,0),Background=B("#16202D"),VerticalAlignment=VerticalAlignment.Top,Child=banner};Grid.SetColumn(bannerFrame,1);header.Children.Add(bannerFrame);
   Grid.SetRow(scroll,1);Children.Add(scroll);scroll.Content=content;
   var loading=AddText(content,"Загрузка описания…",20,"#8F98A0");
@@ -64,7 +66,7 @@ public sealed class NativeDetails:Grid,IDisposable{
   foreach(var b in new[]{close,prev,next,pause}){controls.Children.Add(b);viewerButtons.Add(b);}
   movie.MediaFailed+=(_,_)=>{movie.Stop();movie.Visibility=Visibility.Collapsed;};
   PreviewMouseWheel+=(_,e)=>{if(viewer.Visibility==Visibility.Visible)Step(e.Delta>0?-1:1);else scroll.ScrollToVerticalOffset(scroll.VerticalOffset-e.Delta);e.Handled=true;};
-  Loaded+=async(_,_)=>{if(loaded)return;loaded=true;playButton.Focus();await Load(game,loading);};
+  Loaded+=async(_,_)=>{if(loaded)return;loaded=true;FitHeight();playButton.Focus();await Load(game,loading);};
   Unloaded+=(_,_)=>movie.Stop();
  }
  static Button Btn(string text,Action action,bool primary=false){
@@ -93,22 +95,39 @@ public sealed class NativeDetails:Grid,IDisposable{
  }
  async Task<JsonDocument> Data(string key,string url,int minutes){var folder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamConsoleLauncher","content");Directory.CreateDirectory(folder);var path=Path.Combine(folder,key+".json");if(File.Exists(path)&&DateTime.UtcNow-File.GetLastWriteTimeUtc(path)<TimeSpan.FromMinutes(minutes))try{return JsonDocument.Parse(await File.ReadAllTextAsync(path,cancel.Token));}catch(JsonException){}try{var json=await Http.GetStringAsync(url,cancel.Token);var doc=JsonDocument.Parse(json);try{await File.WriteAllTextAsync(path,json,cancel.Token);}catch{}return doc;}catch{if(File.Exists(path))return JsonDocument.Parse(await File.ReadAllTextAsync(path,cancel.Token));throw;}}
  async Task Load(Game game,TextBlock loading){
+  JsonDocument? doc=null;Exception? failure=null;
   try{
-   using var doc=await Data(game.Id+"_ru","https://store.steampowered.com/api/appdetails?appids="+game.Id+"&l=russian",1440);
+   var sources=new[]{(game.Id+"_ru2","https://store.steampowered.com/api/appdetails?appids="+game.Id+"&l=russian&cc=RU"),(game.Id+"_en","https://store.steampowered.com/api/appdetails?appids="+game.Id+"&l=english")};
+   foreach(var (key,url) in sources){
+    try{
+     var candidate=await Data(key,url,1440);
+     var item=candidate.RootElement.GetProperty(game.Id);
+     if(item.GetProperty("success").GetBoolean()){doc=candidate;break;}
+     candidate.Dispose();failure=new Exception("Steam не отдаёт описание этой игры для вашего региона");
+    }catch(OperationCanceledException){return;}catch(Exception ex){failure=ex;}
+   }
    if(disposed)return;
-   var entry=doc.RootElement.GetProperty(game.Id);if(!entry.GetProperty("success").GetBoolean())throw new Exception();
-   var data=entry.GetProperty("data");loading.Visibility=Visibility.Collapsed;
-   var facts=new List<string>();var makers=new List<string>();
+   if(doc==null)throw failure??new Exception("нет данных");
+   using(doc){Build(loading,doc.RootElement.GetProperty(game.Id).GetProperty("data"));}
+  }catch(OperationCanceledException){return;}
+  catch(Exception ex){if(!disposed){loading.Text="Описание недоступно: "+ex.Message;_=Picture(banner,"https://shared.fastly.steamstatic.com/steam/apps/"+game.Id+"/header.jpg");}}
+  if(!disposed)await Reviews(game.Id);
+ }
+ void Build(TextBlock loading,JsonElement data){
+  loading.Visibility=Visibility.Collapsed;
+  var facts=new List<string>();var makers=new List<string>();
+  try{
    foreach(var key in new[]{"developers","publishers"})if(data.TryGetProperty(key,out var people))makers.AddRange(people.EnumerateArray().Select(x=>x.GetString()??"").Where(x=>x.Length>0));
    if(makers.Count>0)facts.Add(string.Join(", ",makers.Distinct()));
    if(data.TryGetProperty("release_date",out var date)&&Str(date,"date").Length>0)facts.Add(Str(date,"date"));
    if(data.TryGetProperty("genres",out var genres))facts.Add(string.Join(" · ",genres.EnumerateArray().Select(x=>Str(x,"description"))));
    if(data.TryGetProperty("is_free",out var free)&&free.ValueKind==JsonValueKind.True)facts.Add("Бесплатно");
    else if(data.TryGetProperty("price_overview",out var po)){var priceText=Str(po,"final_formatted");if(po.TryGetProperty("discount_percent",out var dp)&&dp.TryGetInt32(out var dv)&&dv>0)priceText+=" (-"+dv+"%)";if(priceText.Length>0)facts.Add(priceText);}
-   factsText.Text=string.Join(" · ",facts.Where(x=>x.Length>0));
-   var headerImage=Str(data,"header_image");if(headerImage.Length>0)_=Picture(banner,headerImage);
-   var shortText=Plain(Str(data,"short_description")).Trim();
-   if(shortText.Length>0){var summary=AddText(mainHost,shortText,24,"#FFFFFF");summary.MaxWidth=1200;summary.HorizontalAlignment=HorizontalAlignment.Left;}
+  }catch{}
+  factsText.Text=string.Join(" · ",facts.Where(x=>x.Length>0));
+  var headerImage=Str(data,"header_image");if(headerImage.Length>0)_=Picture(banner,headerImage);
+  try{var shortText=Plain(Str(data,"short_description")).Trim();if(shortText.Length>0){var summary=AddText(mainHost,shortText,24,"#FFFFFF");summary.MaxWidth=1200;summary.HorizontalAlignment=HorizontalAlignment.Left;}}catch{}
+  try{
    var thumbUrls=new List<string>();
    if(data.TryGetProperty("screenshots",out var screenshots))foreach(var shot in screenshots.EnumerateArray()){var src=Str(shot,"path_full");if(!Safe(src))continue;shots.Add(src);thumbUrls.Add(Str(shot,"path_thumbnail"));}
    if(shots.Count>0){
@@ -116,6 +135,8 @@ public sealed class NativeDetails:Grid,IDisposable{
     for(int at=0;at<Math.Min(8,shots.Count);at++){int pick=at;var image=new Image{Width=320,Height=180,Stretch=Stretch.UniformToFill};var b=Btn("",()=>OpenShot(pick));b.Padding=new Thickness(4);b.Content=image;shotStrip.Children.Add(b);shotRow.Add(b);_=Picture(image,thumbUrls[at]);}
     rows.Add(shotRow);
    }
+  }catch{}
+  try{
    StackPanel? trailerStrip=null;List<Control>? trailerRow=null;int count=0;
    if(data.TryGetProperty("movies",out var movies))foreach(var m in movies.EnumerateArray()){
     if(count>=3)break;
@@ -127,10 +148,8 @@ public sealed class NativeDetails:Grid,IDisposable{
     var tb=Btn("",()=>PlayMovie(source));tb.Padding=new Thickness(4);tb.Content=layer;trailerStrip.Children.Add(tb);trailerRow!.Add(tb);
     if(Safe(thumb))_=Picture(preview,thumb);
    }
-   var detailed=Str(data,"detailed_description");
-   if(Plain(detailed).Trim().Length>300){AddHeading(descHost,"Об игре");descHost.Children.Add(UiKit.Description(detailed));}
-  }catch(OperationCanceledException){return;}catch{if(!disposed)loading.Text="Описание сейчас недоступно. Запуск игры от него не зависит.";}
-  if(!disposed)await Reviews(game.Id);
+  }catch{}
+  try{var detailed=Str(data,"detailed_description");if(Plain(detailed).Trim().Length>300){AddHeading(descHost,"Об игре");descHost.Children.Add(UiKit.Description(detailed));}}catch{}
  }
  async Task Reviews(string id){
   try{
