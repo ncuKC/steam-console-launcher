@@ -25,6 +25,7 @@ public partial class LauncherWindow{
   if(authStatus.Parent is Panel old)old.Children.Remove(authStatus);
   detail.Children.Add(authStatus);
   detail.Children.Add(Button(steamSession==null?"Войти в Steam":"Сменить аккаунт Steam",async()=>await OpenSteamLogin()));
+  if(steamSession!=null)detail.Children.Add(Button("Импортировать игры из аккаунта",async()=>await ImportFromSteamSession()));
   if(steamSession!=null)detail.Children.Add(Button("Выйти из Steam",async()=>await SignOutSteam()));
  }
  async Task OpenSteamLogin(){
