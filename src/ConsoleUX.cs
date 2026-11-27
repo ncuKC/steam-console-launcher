@@ -38,12 +38,19 @@ public partial class LauncherWindow{
   SectionItem(Button(root?"Закрыть меню":"Назад",backAction));
  }
  void SectionFocus(){detail.MoveFocus(new TraversalRequest(FocusNavigationDirection.First));}
+ void AddAutostartItem(){
+  string Caption()=>"Запуск вместе с Windows: "+(Autostart.Enabled?"вкл":"выкл");
+  var toggle=Button(Caption(),()=>{});
+  toggle.Click+=(_,_)=>{Autostart.Set(!Autostart.Enabled);toggle.Content=Caption();};
+  SectionItem(toggle);
+ }
  void OpenConsoleSettings(){
   SectionPage("Меню лаунчера",true);
   SectionItem(Button("Игра",OpenGameSection));
   SectionItem(Button("Звук и вид",OpenSoundSection));
   SectionItem(Button("Steam и библиотека",OpenSteamSection));
   SectionItem(Button("Обновления лаунчера",OpenUpdateSection));
+  AddAutostartItem();
   SectionItem(Button("Питание ПК",OpenPowerMenu));
   SectionItem(Button("Выйти из лаунчера",Close));
   Show("details");SectionFocus();
