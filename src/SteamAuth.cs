@@ -15,6 +15,7 @@ public partial class LauncherWindow{
   try{if(File.Exists(AccountFile))steamSession=JsonSerializer.Deserialize<SteamSession>(File.ReadAllText(AccountFile));}catch{steamSession=null;}
   if(shell.Children.Count>0&&shell.Children[0] is DockPanel nav&&nav.Children.Count>0&&nav.Children[0] is StackPanel settings&&accountBadge.Parent==null)settings.Children.Insert(0,accountBadge);
   RefreshSteamAuthUI();
+  InitReturnCombo();
  }
  void RefreshSteamAuthUI(){
   accountBadge.Text=steamSession is {PersonaName.Length:>0} s?s.PersonaName:"Гость";
@@ -27,6 +28,7 @@ public partial class LauncherWindow{
   detail.Children.Add(Button(steamSession==null?"Войти в Steam":"Сменить аккаунт Steam",async()=>await OpenSteamLogin()));
   if(steamSession!=null)detail.Children.Add(Button("Импортировать игры из аккаунта",async()=>await ImportFromSteamSession()));
   if(steamSession!=null)detail.Children.Add(Button("Выйти из Steam",async()=>await SignOutSteam()));
+  AddPowerMenu();
  }
  async Task OpenSteamLogin(){
   menuVisible=false;awaitingSteamLogin=true;

@@ -3,6 +3,7 @@ namespace ConsoleLauncher;
 public sealed class Gamepad:IDisposable{
  const string Dll="SDL3.dll";
  const int RepeatDelayMs=400,RepeatIntervalMs=110;
+ [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)][return:MarshalAs(UnmanagedType.I1)]static extern bool SDL_SetHint([MarshalAs(UnmanagedType.LPUTF8Str)]string name,[MarshalAs(UnmanagedType.LPUTF8Str)]string value);
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)][return:MarshalAs(UnmanagedType.I1)]static extern bool SDL_Init(uint flags);
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern void SDL_Quit();
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern void SDL_PumpEvents();
@@ -17,7 +18,8 @@ public sealed class Gamepad:IDisposable{
  [DllImport(Dll,CallingConvention=CallingConvention.Cdecl)]static extern int SDL_GetGamepadButtonLabel(IntPtr gamepad,int button);public string ButtonLabel(int code){int label=pad==IntPtr.Zero?0:SDL_GetGamepadButtonLabel(pad,code);return label switch{1=>"A",2=>"B",3=>"X",4=>"Y",5=>"×",6=>"○",7=>"□",8=>"△",_=>new[]{"A","B","X","Y"}[Math.Clamp(code,0,3)]};}IntPtr pad;bool ready;bool ltBefore,rtBefore;readonly bool[] before=new bool[26];readonly long[] repeatAt=new long[26];long next;
  public double LeftX,LeftY,RightX,RightY;public bool SuppressLeftStick;
  static double Norm(int v){double d=v/32767.0;return Math.Abs(d)<.2?0:d;}
- public Gamepad(){try{ready=SDL_Init(0x00002000);}catch(DllNotFoundException){}catch(BadImageFormatException){}}
+ public Gamepad(){try{try{SDL_SetHint("SDL_JOYSTICK_ALLOW_BACKGROUND_EVENTS","1");}catch(EntryPointNotFoundException){}ready=SDL_Init(0x00002000);}catch(DllNotFoundException){}catch(BadImageFormatException){}}
+ public bool ComboHeld()=>ready&&pad!=IntPtr.Zero&&SDL_GetGamepadButton(pad,PadButton.Back)&&SDL_GetGamepadButton(pad,PadButton.Start);
  public IEnumerable<int> Tick(bool active){
   LeftX=LeftY=RightX=RightY=0;
   var pressed=new List<int>();if(!ready)return pressed;
