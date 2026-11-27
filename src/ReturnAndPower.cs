@@ -18,7 +18,7 @@ public partial class LauncherWindow{
    if(++comboTicks<12)return;
    comboFired=true;
    if(IsActive&&WindowState!=WindowState.Minimized)return;
-   try{Show();WindowState=WindowState.Maximized;Activate();SetForegroundWindow(new WindowInteropHelper(this).Handle);if(page=="library")FocusSelected();}catch{}
+   try{var self=new WindowInteropHelper(this).Handle;GameReturn.MinimizeForeground();Show();WindowState=WindowState.Maximized;Activate();SetForegroundWindow(self);GameReturn.Force(self);if(page=="library")FocusSelected();}catch{}
   };
   comboTimer.Start();
  }
