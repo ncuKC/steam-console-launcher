@@ -3,40 +3,54 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 namespace ConsoleLauncher;
 public sealed class HomeScreen:Grid{
- const double RowHeight=480,Step=240;
+ const double RowHeight=380,Step=356;
  static Brush B(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
+ static readonly HttpClient Web=new(){Timeout=TimeSpan.FromSeconds(12)};
+ static readonly SemaphoreSlim Limit=new(4);
+ static readonly System.Collections.Concurrent.ConcurrentDictionary<string,Lazy<Task<BitmapImage?>>> WideCache=new();
+ static Task<BitmapImage?> Wide(string id)=>WideCache.GetOrAdd(id,_=>new Lazy<Task<BitmapImage?>>(()=>LoadWide(id))).Value;
+ static BitmapImage DecodeWide(byte[] bytes){using var stream=new MemoryStream(bytes);var b=new BitmapImage();b.BeginInit();b.CacheOption=BitmapCacheOption.OnLoad;b.DecodePixelWidth=600;b.StreamSource=stream;b.EndInit();b.Freeze();return b;}
+ static async Task<BitmapImage?> LoadWide(string id){
+  await Limit.WaitAsync();
+  try{
+   var folder=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamConsoleLauncher","artwork");var file=Path.Combine(folder,id+"_wide.bin");
+   if(File.Exists(file))try{var saved=await File.ReadAllBytesAsync(file);return await Task.Run(()=>DecodeWide(saved));}catch{try{File.Delete(file);}catch{}}
+   foreach(var name in new[]{"capsule_616x353.jpg","header.jpg"})foreach(var host in new[]{"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"})try{
+    var data=await Web.GetByteArrayAsync(host+"/steam/apps/"+id+"/"+name);
+    var image=await Task.Run(()=>DecodeWide(data));
+    try{Directory.CreateDirectory(folder);await File.WriteAllBytesAsync(file,data);}catch{}
+    return image;
+   }catch{}
+   return null;
+  }finally{Limit.Release();}
+ }
  sealed class Tile:Border{
   public Game Game{get;}
   readonly ScaleTransform scale=new(1,1);
   readonly TextBlock name=new();
-  readonly Image face=new(),back=new();
+  readonly Image face=new();
   public Tile(Game game,Func<string,bool,Task<BitmapImage?>> art){
-   Game=game;Width=200;Height=300;Margin=new Thickness(0,50,40,50);Background=new LinearGradientBrush(Color.FromRgb(0x26,0x35,0x4A),Color.FromRgb(0x12,0x1A,0x26),90);BorderThickness=new Thickness(3);BorderBrush=Brushes.Transparent;CornerRadius=new CornerRadius(6);ClipToBounds=true;Opacity=.85;RenderTransformOrigin=new Point(.5,.5);RenderTransform=scale;
+   Game=game;Width=320;Height=180;Margin=new Thickness(0,60,36,60);Background=new LinearGradientBrush(Color.FromRgb(0x26,0x35,0x4A),Color.FromRgb(0x12,0x1A,0x26),90);BorderThickness=new Thickness(3);BorderBrush=Brushes.Transparent;CornerRadius=new CornerRadius(6);ClipToBounds=true;Opacity=.85;RenderTransformOrigin=new Point(.5,.5);RenderTransform=scale;
    var holder=new Grid();Child=holder;
    name.Text=game.Name;name.FontSize=22;name.FontWeight=FontWeights.SemiBold;name.Foreground=B("#E1E8F0");name.TextWrapping=TextWrapping.Wrap;name.TextAlignment=TextAlignment.Center;name.VerticalAlignment=VerticalAlignment.Center;name.Margin=new Thickness(14);
-   back.Stretch=Stretch.UniformToFill;back.Opacity=.55;back.Effect=new BlurEffect{Radius=28};back.Visibility=Visibility.Collapsed;
    face.Stretch=Stretch.UniformToFill;
-   holder.Children.Add(name);holder.Children.Add(back);holder.Children.Add(face);
-   _=Load(art);
+   holder.Children.Add(name);holder.Children.Add(face);
+   _=Load();
   }
-  async Task Load(Func<string,bool,Task<BitmapImage?>> art){
+  async Task Load(){
    try{
-    var bitmap=await art(Game.Id,false);if(bitmap==null)return;
+    var bitmap=await Wide(Game.Id);if(bitmap==null)return;
     face.Source=bitmap;
-    if(bitmap.PixelWidth>bitmap.PixelHeight){
-     face.Stretch=Stretch.Uniform;back.Source=bitmap;back.Visibility=Visibility.Visible;
-     name.VerticalAlignment=VerticalAlignment.Bottom;name.FontSize=15;name.Margin=new Thickness(0);name.Padding=new Thickness(8,8,8,10);name.Background=B("#C0101820");name.Foreground=Brushes.White;
-     if(Child is Grid holder){holder.Children.Remove(name);holder.Children.Add(name);}
-    }else name.Visibility=Visibility.Collapsed;
+    name.VerticalAlignment=VerticalAlignment.Bottom;name.FontSize=17;name.Margin=new Thickness(0);name.Padding=new Thickness(12,8,12,10);name.TextAlignment=TextAlignment.Left;name.TextWrapping=TextWrapping.NoWrap;name.TextTrimming=TextTrimming.CharacterEllipsis;name.Background=B("#C0101820");name.Foreground=Brushes.White;
+    if(Child is Grid holder){holder.Children.Remove(name);holder.Children.Add(name);}
    }catch{}
   }
   public void SetFocus(bool on){
-   double size=on?1.3:1,fade=on?1:.85;
+   double size=on?1.18:1,fade=on?1:.85;
    Panel.SetZIndex(this,on?10:0);BorderBrush=on?Brushes.White:Brushes.Transparent;
    if(Experience.ReducedMotion){
     scale.BeginAnimation(ScaleTransform.ScaleXProperty,null);scale.BeginAnimation(ScaleTransform.ScaleYProperty,null);scale.ScaleX=size;scale.ScaleY=size;
@@ -50,8 +64,8 @@ public sealed class HomeScreen:Grid{
  }
  sealed class Row{
   public readonly List<Tile> Tiles=new();
-  public readonly StackPanel Strip=new(){Orientation=Orientation.Horizontal,Margin=new Thickness(40,0,240,0)};
-  public readonly ScrollViewer Viewer=new(){Height=400,Margin=new Thickness(0,0,0,36),VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Hidden,Focusable=false};
+  public readonly StackPanel Strip=new(){Orientation=Orientation.Horizontal,Margin=new Thickness(40,0,400,0)};
+  public readonly ScrollViewer Viewer=new(){Height=300,Margin=new Thickness(0,0,0,36),VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Hidden,Focusable=false};
  }
  readonly Func<string,bool,Task<BitmapImage?>> art;
  readonly Action<Game> choose;
