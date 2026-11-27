@@ -9,6 +9,7 @@ public partial class LauncherWindow{
  internal void InitXboxStyle(){
   if(xboxStyleReady)return;xboxStyleReady=true;
   detail.LayoutUpdated+=(_,_)=>StyleLauncherMenu();
+  InitLibraryPolish();
   InitWebPad();
  }
  void StyleLauncherMenu(){
