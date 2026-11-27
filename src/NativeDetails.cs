@@ -19,6 +19,7 @@ public sealed class NativeDetails:Grid,IDisposable{
  readonly StackPanel mainHost=new(),reviewHost=new(),descHost=new();
  readonly List<List<Control>> rows=new();
  readonly List<Button> viewerButtons=new();
+ readonly List<Button> tabButtons=new();
  readonly TextBlock factsText=new(){FontSize=18,Foreground=B("#8F98A0"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,6,0,18)};
  readonly Image banner=new(){Width=460,Height=215,Stretch=Stretch.UniformToFill};
  readonly Grid viewer=new(){Background=B("#0E141B"),Visibility=Visibility.Collapsed};
@@ -32,6 +33,13 @@ public sealed class NativeDetails:Grid,IDisposable{
  static bool Safe(string s)=>Uri.TryCreate(s,UriKind.Absolute,out var u)&&u.Scheme=="https"&&(u.Host.EndsWith(".steamstatic.com",StringComparison.OrdinalIgnoreCase)||u.Host.EndsWith(".akamaihd.net",StringComparison.OrdinalIgnoreCase));
  static IEnumerable<Button> Buttons(DependencyObject root){foreach(var child in LogicalTreeHelper.GetChildren(root)){if(child is Button b)yield return b;else if(child is DependencyObject d)foreach(var x in Buttons(d))yield return x;}}
  void FitHeight(){if(!double.IsNaN(Height))return;var w=Window.GetWindow(this);if(w==null)return;double total=w.Content is FrameworkElement root&&root.ActualHeight>0?root.ActualHeight:w.ActualHeight;Height=Math.Max(400,total-Margin.Top-Margin.Bottom);}
+ void ShowTab(int at){
+  mainHost.Visibility=at==0?Visibility.Visible:Visibility.Collapsed;
+  reviewHost.Visibility=at==1?Visibility.Visible:Visibility.Collapsed;
+  descHost.Visibility=at==2?Visibility.Visible:Visibility.Collapsed;
+  for(int i=0;i<tabButtons.Count;i++){bool on=i==at;tabButtons[i].Background=B(on?"#66C0F4":"#2A475E");tabButtons[i].Foreground=B(on?"#0E141B":"#C6D4DF");}
+  scroll.ScrollToTop();
+ }
  public NativeDetails(Game game,Action launch,Func<Task> store,Action back){
   bool storeItem=game.Platform=="Магазин";
   Background=B("#171A21");
@@ -52,8 +60,15 @@ public sealed class NativeDetails:Grid,IDisposable{
   else{var pageButton=Btn("Страница в Steam",()=>{_=store();});buttons.Children.Add(pageButton);rows.Add(new List<Control>{backButton,playButton,pageButton});}
   var bannerFrame=new Border{CornerRadius=new CornerRadius(6),ClipToBounds=true,Margin=new Thickness(32,0,0,0),Background=B("#16202D"),VerticalAlignment=VerticalAlignment.Top,Child=banner};Grid.SetColumn(bannerFrame,1);header.Children.Add(bannerFrame);
   Grid.SetRow(scroll,1);Children.Add(scroll);scroll.Content=content;
+  var tabBar=new WrapPanel{Margin=new Thickness(0,6,0,6)};content.Children.Add(tabBar);
+  var tabRow=new List<Control>();
+  string[] tabNames={"Обзор","Отзывы","Об игре"};
+  for(int tabAt=0;tabAt<tabNames.Length;tabAt++){int tabPick=tabAt;var tabButton=Btn(tabNames[tabAt],()=>ShowTab(tabPick));tabBar.Children.Add(tabButton);tabRow.Add(tabButton);tabButtons.Add(tabButton);}
+  rows.Add(tabRow);
   var loading=AddText(content,"Загрузка описания…",20,"#8F98A0");
   content.Children.Add(mainHost);content.Children.Add(reviewHost);content.Children.Add(descHost);
+  AddText(reviewHost,"Загрузка отзывов…",20,"#8F98A0");
+  ShowTab(0);
   Grid.SetRowSpan(viewer,2);Children.Add(viewer);
   viewer.RowDefinitions.Add(new(){Height=new GridLength(1,GridUnitType.Star)});
   viewer.RowDefinitions.Add(new(){Height=GridLength.Auto});
@@ -150,25 +165,28 @@ public sealed class NativeDetails:Grid,IDisposable{
    }
   }catch{}
   try{var detailed=Str(data,"detailed_description");if(Plain(detailed).Trim().Length>300){AddHeading(descHost,"Об игре");descHost.Children.Add(UiKit.Description(detailed));}}catch{}
+  if(descHost.Children.Count==0)AddText(descHost,"Подробного описания для этой игры нет.",20,"#8F98A0");
  }
+ void NoReviews(){if(disposed)return;reviewHost.Children.Clear();AddText(reviewHost,"Отзывов на русском языке пока нет или они недоступны.",20,"#8F98A0");}
  async Task Reviews(string id){
   try{
    var input=JsonSerializer.Serialize(new{appid=uint.Parse(id),filter=0,languages=new[]{"russian"},num_per_page=10,purchase_type=1,display_language="russian"});
    using var doc=await Data(id+"_reviews_ru","https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/?input_json="+Uri.EscapeDataString(input),10);
    if(disposed)return;
    var root=doc.RootElement;if(root.TryGetProperty("response",out var response))root=response;
-   if(!root.TryGetProperty("reviews",out var reviews)||reviews.GetArrayLength()==0)return;
+   if(!root.TryGetProperty("reviews",out var reviews)||reviews.GetArrayLength()==0){NoReviews();return;}
+   reviewHost.Children.Clear();
    var strip=Strip(reviewHost,"Отзывы Steam");var toggles=new List<Control>();var talks=new List<Control>();int n=0;
    foreach(var r in reviews.EnumerateArray()){var card=ReviewCards.Make(r,id);strip.Children.Add(card);var inside=Buttons(card).ToList();if(inside.Count>0)toggles.Add(inside[0]);if(inside.Count>1)talks.Add(inside[1]);if(++n>=8)break;}
    if(toggles.Count>0)rows.Add(toggles);if(talks.Count>0)rows.Add(talks);
-  }catch{}
+  }catch{NoReviews();}
  }
  async Task Picture(Image image,string url,int version=-1){if(!Safe(url))return;try{await Images.WaitAsync(cancel.Token);try{var bytes=await Http.GetByteArrayAsync(url,cancel.Token);var result=await Task.Run(()=>{using var stream=new MemoryStream(bytes);var b=new BitmapImage();b.BeginInit();b.CacheOption=BitmapCacheOption.OnLoad;b.DecodePixelWidth=1600;b.StreamSource=stream;b.EndInit();b.Freeze();return b;});if(!disposed&&(version<0||version==imageVersion))image.Source=result;}finally{Images.Release();}}catch{}}
  void PlayMovie(string source){lastFocus=Keyboard.FocusedElement as UIElement;full.Visibility=Visibility.Collapsed;movie.Visibility=Visibility.Visible;viewer.Visibility=Visibility.Visible;movie.Volume=Experience.Volume;movie.Source=new Uri(source);paused=false;movie.Play();viewer.MoveFocus(new(FocusNavigationDirection.First));}
  void OpenShot(int at){if(shots.Count==0)return;if(viewer.Visibility!=Visibility.Visible)lastFocus=Keyboard.FocusedElement as UIElement;index=(at+shots.Count)%shots.Count;movie.Stop();movie.Visibility=Visibility.Collapsed;full.Visibility=Visibility.Visible;viewer.Visibility=Visibility.Visible;full.Source=null;_=Picture(full,shots[index],++imageVersion);Experience.Transition(viewer);viewer.MoveFocus(new(FocusNavigationDirection.First));}
  void Step(int delta){if(movie.Visibility!=Visibility.Visible)OpenShot(index+delta);}
  bool Move(int code){
-  var all=rows.Where(r=>r.Count>0).ToList();if(all.Count==0)return false;
+  var all=rows.Where(r=>r.Count>0&&r.Any(c=>c.IsVisible)).ToList();if(all.Count==0)return false;
   var focused=Keyboard.FocusedElement as Control;int ri=-1,ci=-1;
   for(int i=0;i<all.Count&&focused!=null;i++){int j=all[i].IndexOf(focused);if(j>=0){ri=i;ci=j;break;}}
   if(ri<0){ri=0;ci=Math.Min(1,all[0].Count-1);}
