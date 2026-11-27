@@ -8,7 +8,7 @@ using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 namespace ConsoleLauncher;
 public sealed class HomeScreen:Grid{
- const double RowHeight=444,Step=240;
+ const double RowHeight=480,Step=240;
  static Brush B(string s)=>(Brush)new BrushConverter().ConvertFromString(s)!;
  sealed class Tile:Border{
   public Game Game{get;}
@@ -16,9 +16,9 @@ public sealed class HomeScreen:Grid{
   readonly TextBlock name=new();
   readonly Image face=new(),back=new();
   public Tile(Game game,Func<string,bool,Task<BitmapImage?>> art){
-   Game=game;Width=200;Height=300;Margin=new Thickness(0,50,40,50);Background=B("#16202D");BorderThickness=new Thickness(3);BorderBrush=Brushes.Transparent;CornerRadius=new CornerRadius(6);ClipToBounds=true;Opacity=.6;RenderTransformOrigin=new Point(.5,.5);RenderTransform=scale;
+   Game=game;Width=200;Height=300;Margin=new Thickness(0,50,40,50);Background=new LinearGradientBrush(Color.FromRgb(0x26,0x35,0x4A),Color.FromRgb(0x12,0x1A,0x26),90);BorderThickness=new Thickness(3);BorderBrush=Brushes.Transparent;CornerRadius=new CornerRadius(6);ClipToBounds=true;Opacity=.85;RenderTransformOrigin=new Point(.5,.5);RenderTransform=scale;
    var holder=new Grid();Child=holder;
-   name.Text=game.Name;name.FontSize=20;name.Foreground=B("#8F98A0");name.TextWrapping=TextWrapping.Wrap;name.TextAlignment=TextAlignment.Center;name.VerticalAlignment=VerticalAlignment.Center;name.Margin=new Thickness(14);
+   name.Text=game.Name;name.FontSize=22;name.FontWeight=FontWeights.SemiBold;name.Foreground=B("#E1E8F0");name.TextWrapping=TextWrapping.Wrap;name.TextAlignment=TextAlignment.Center;name.VerticalAlignment=VerticalAlignment.Center;name.Margin=new Thickness(14);
    back.Stretch=Stretch.UniformToFill;back.Opacity=.55;back.Effect=new BlurEffect{Radius=28};back.Visibility=Visibility.Collapsed;
    face.Stretch=Stretch.UniformToFill;
    holder.Children.Add(name);holder.Children.Add(back);holder.Children.Add(face);
@@ -27,12 +27,16 @@ public sealed class HomeScreen:Grid{
   async Task Load(Func<string,bool,Task<BitmapImage?>> art){
    try{
     var bitmap=await art(Game.Id,false);if(bitmap==null)return;
-    face.Source=bitmap;name.Visibility=Visibility.Collapsed;
-    if(bitmap.PixelWidth>bitmap.PixelHeight){face.Stretch=Stretch.Uniform;back.Source=bitmap;back.Visibility=Visibility.Visible;}
+    face.Source=bitmap;
+    if(bitmap.PixelWidth>bitmap.PixelHeight){
+     face.Stretch=Stretch.Uniform;back.Source=bitmap;back.Visibility=Visibility.Visible;
+     name.VerticalAlignment=VerticalAlignment.Bottom;name.FontSize=15;name.Margin=new Thickness(0);name.Padding=new Thickness(8,8,8,10);name.Background=B("#C0101820");name.Foreground=Brushes.White;
+     if(Child is Grid holder){holder.Children.Remove(name);holder.Children.Add(name);}
+    }else name.Visibility=Visibility.Collapsed;
    }catch{}
   }
   public void SetFocus(bool on){
-   double size=on?1.3:1,fade=on?1:.6;
+   double size=on?1.3:1,fade=on?1:.85;
    Panel.SetZIndex(this,on?10:0);BorderBrush=on?Brushes.White:Brushes.Transparent;
    if(Experience.ReducedMotion){
     scale.BeginAnimation(ScaleTransform.ScaleXProperty,null);scale.BeginAnimation(ScaleTransform.ScaleYProperty,null);scale.ScaleX=size;scale.ScaleY=size;
@@ -47,7 +51,7 @@ public sealed class HomeScreen:Grid{
  sealed class Row{
   public readonly List<Tile> Tiles=new();
   public readonly StackPanel Strip=new(){Orientation=Orientation.Horizontal,Margin=new Thickness(40,0,240,0)};
-  public readonly ScrollViewer Viewer=new(){Height=400,VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Hidden,Focusable=false};
+  public readonly ScrollViewer Viewer=new(){Height=400,Margin=new Thickness(0,0,0,36),VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Hidden,Focusable=false};
  }
  readonly Func<string,bool,Task<BitmapImage?>> art;
  readonly Action<Game> choose;
@@ -99,7 +103,7 @@ public sealed class HomeScreen:Grid{
   var installed=games.Where(g=>g.Installed).OrderBy(g=>g.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   var others=games.Where(g=>!g.Installed).OrderByDescending(g=>g.LastPlayed).ThenBy(g=>g.Name).Take(24).ToList();
   AddRow("Недавние",recent);AddRow("Установленные игры",installed);AddRow("Ещё в коллекции",others);
-  if(rows.Count==0){caption.Text="";gameName.Text="Игр пока нет";meta.Text="Откройте Библиотеку или импортируйте коллекцию: Меню → Аккаунт Steam.";playButton.Visibility=Visibility.Collapsed;return;}
+  if(rows.Count==0){caption.Text="";gameName.Text="Игр пока нет";meta.Text="Откройте Библиотеку или импортируйте коллекцию: Меню → Steam и библиотека.";playButton.Visibility=Visibility.Collapsed;return;}
   playButton.Visibility=Visibility.Visible;
   int fr=0,fc=0;
   if(keep!=null)for(int r=0;r<rows.Count;r++){int c=rows[r].Tiles.FindIndex(t=>t.Game.Id==keep);if(c>=0){fr=r;fc=c;break;}}
