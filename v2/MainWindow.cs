@@ -88,7 +88,7 @@ public sealed class MainWindow:Window{
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
  int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken,galleryIndex,shotToken,fastTicks;
- bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip;
+ bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip,returning;
  string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
  DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now;
@@ -842,16 +842,30 @@ public sealed class MainWindow:Window{
   }
  }
  async void ReturnFromGame(){
+  if(returning)return;
+  returning=true;
+  var started=DateTime.Now;
   userMinimized=false;
   lastInput=DateTime.Now;
   syncUntil=DateTime.Now.AddSeconds(90);
+  splashing=true;
+  splash.BeginAnimation(UIElement.OpacityProperty,null);
+  splash.Opacity=1;
+  splash.Visibility=Visibility.Visible;
+  StartSplash();
+  SetStep("Возвращаемся…",0);
   ShowAgain();
   WindowState=WindowState.Maximized;
   Activate();
   Topmost=true;
   Native.Raise(this);
-  games=await Library.Load();
-  FillShelves();
+  try{
+   games=await Library.Load();
+   FillShelves();
+  }catch{}
+  await Pace(started,1500);
+  EndSplash();
+  returning=false;
  }
  void WatchFolder(){
   if(folderBusy||watchDir==null)return;
