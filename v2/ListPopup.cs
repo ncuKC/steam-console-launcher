@@ -120,7 +120,16 @@ public sealed class ListPopup:Border{
  public void Act(int direction){
   if(rows.Count==0)return;
   rows[index].Act(direction);
-  if(open)Refresh();
+  if(open){
+   Refresh();
+   if(index<rows.Count){
+    var scale=rows[index].Scale;
+    var span=TimeSpan.FromMilliseconds(180);
+    var ease=new BackEase{EasingMode=EasingMode.EaseOut,Amplitude=.5};
+    scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(.94,1.025,span){EasingFunction=ease});
+    scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(.94,1.025,span){EasingFunction=ease});
+   }
+  }
  }
  public void Refresh(){
   for(int i=0;i<rows.Count;i++){
