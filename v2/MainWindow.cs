@@ -66,10 +66,16 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailLast=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly TextBlock detailSize=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly TextBlock detailState=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
+ readonly Grid stateBar=new(){Height=6,Margin=new Thickness(0,8,0,0),Visibility=Visibility.Collapsed};
+ readonly Border stateFill=new(){Height=6,CornerRadius=new CornerRadius(3),Background=Ui.B("#66C0F4"),RenderTransformOrigin=new Point(0,.5)};
+ readonly ScaleTransform stateScale=new(0,1);
+ readonly TextBlock detailXLabel=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)};
+ Border? xButton;
  readonly TextBlock detailDesc=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxHeight=140,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,22,0,0),Visibility=Visibility.Collapsed};
  readonly TextBlock detailPlay=new(){FontSize=26,FontWeight=FontWeights.Bold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(14,0,0,0)};
  readonly TextBlock detailFavLabel=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)};
  readonly (Border Box,TextBlock Text) badgeA=MakeBadge();
+ readonly (Border Box,TextBlock Text) badgeX=MakeBadge();
  readonly (Border Box,TextBlock Text) badgeY=MakeBadge();
  readonly (Border Box,TextBlock Text) badgeB=MakeBadge();
  readonly TextBlock chip=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,16,44,0),Visibility=Visibility.Collapsed};
@@ -88,7 +94,7 @@ public sealed class MainWindow:Window{
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
  int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken,galleryIndex,shotToken,fastTicks;
- bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip,returning;
+ bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip,returning,detailUpdate;
  string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
  DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now;
@@ -100,7 +106,7 @@ public sealed class MainWindow:Window{
   var box=new Border{MinWidth=34,Height=34,CornerRadius=new CornerRadius(17),BorderThickness=new Thickness(2),BorderBrush=Brushes.White,Background=Ui.B("#33000000"),Child=text};
   return (box,text);
  }
- static Border Tile(string label,TextBlock value,Thickness margin){
+ static Border Tile(string label,UIElement value,Thickness margin){
   var panel=new StackPanel();
   panel.Children.Add(new TextBlock{Text=label,FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#7F93A8"),Margin=new Thickness(0,0,0,4)});
   panel.Children.Add(value);
@@ -419,7 +425,13 @@ public sealed class MainWindow:Window{
   detailTiles2.ColumnDefinitions.Add(new ColumnDefinition());
   var lastTile=Tile("ПОСЛЕДНИЙ ЗАПУСК",detailLast,new Thickness(0,0,8,0));
   var sizeTile=Tile("РАЗМЕР",detailSize,new Thickness(4,0,4,0));
-  var stateTile=Tile("СОСТОЯНИЕ",detailState,new Thickness(8,0,0,0));
+  stateFill.RenderTransform=stateScale;
+  stateBar.Children.Add(new Border{Height=6,CornerRadius=new CornerRadius(3),Background=Ui.B("#33FFFFFF")});
+  stateBar.Children.Add(stateFill);
+  var stateBox=new StackPanel();
+  stateBox.Children.Add(detailState);
+  stateBox.Children.Add(stateBar);
+  var stateTile=Tile("СОСТОЯНИЕ",stateBox,new Thickness(8,0,0,0));
   Grid.SetColumn(sizeTile,1);
   Grid.SetColumn(stateTile,2);
   detailTiles2.Children.Add(lastTile);
@@ -432,6 +444,12 @@ public sealed class MainWindow:Window{
   play.Children.Add(badgeA.Box);
   play.Children.Add(detailPlay);
   buttons.Children.Add(new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(26,12,34,12),Margin=new Thickness(0,0,16,0),Background=new LinearGradientBrush(Hex("#6FCB36"),Hex("#3F8A1F"),90),Child=play});
+  var update=new StackPanel{Orientation=Orientation.Horizontal};
+  update.Children.Add(badgeX.Box);
+  update.Children.Add(detailXLabel);
+  xButton=Soft(update);
+  xButton.Visibility=Visibility.Collapsed;
+  buttons.Children.Add(xButton);
   var fav=new StackPanel{Orientation=Orientation.Horizontal};
   fav.Children.Add(badgeY.Box);
   fav.Children.Add(detailFavLabel);
@@ -463,7 +481,10 @@ public sealed class MainWindow:Window{
   if(keyboard.IsOpen)SetHints(("A","Ввод"),("X","Стереть"),("Y","Пробел"),("B","Закрыть"));
   else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
   else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
-  else if(inDetails)SetHints(("A","Играть"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
+  else if(inDetails){
+   if(detailUpdate)SetHints(("A","Играть"),("X","Обновить"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
+   else SetHints(("A","Играть"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
+  }
   else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Вкладка"));
   else if(tab==0)SetHints(("A","Открыть"),("≡","Меню"),("LB/RB","Вкладка"));
   else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("B","Разделы"),("≡","Меню"));
@@ -527,16 +548,25 @@ public sealed class MainWindow:Window{
   Dim(true);
   UpdateHints();
  }
+ void UpdateGame(Game game){
+  SteamLink("install",game.Id);
+ }
  void OpenActions(Game game){
   armedUninstall=null;
   var items=new List<(Func<string>,Action<int>,string)>();
+  if(game.Store=="Steam"&&detailUpdate){
+   items.Add(Item(()=>"Обновить игру",_=>{
+    UpdateGame(game);
+    popup.Close();
+   },"\ue896"));
+  }
   items.Add(Item(()=>Favorites.Has(game.Id)?"Убрать из избранного":"В избранное",_=>{
    Favorites.Toggle(game.Id);
    favChanged=true;
    ShowDetailState(game);
   },"\ue734"));
   if(game.Store=="Steam"&&game.Installed){
-   items.Add(Item(()=>"Проверить файлы игры",_=>{
+   items.Add(Item(()=>"Восстановить файлы (проверка целостности)",_=>{
     SteamLink("validate",game.Id);
     popup.Close();
    },"\ue73e"));
@@ -658,8 +688,12 @@ public sealed class MainWindow:Window{
   favChip.Visibility=fav?Visibility.Visible:Visibility.Collapsed;
   detailPlay.Text=game.Installed?"Играть":"Установить";
   detailFavLabel.Text="Действия";
+  detailXLabel.Text="Обновить игру";
+  if(xButton!=null)xButton.Visibility=detailUpdate?Visibility.Visible:Visibility.Collapsed;
   badgeA.Text.Text=Controller.Label("A");
   badgeA.Box.BorderBrush=Controller.Tint("A");
+  badgeX.Text.Text=Controller.Label("X");
+  badgeX.Box.BorderBrush=Controller.Tint("X");
   badgeY.Text.Text=Controller.Label("Y");
   badgeY.Box.BorderBrush=Controller.Tint("Y");
   badgeB.Text.Text=Controller.Label("B");
@@ -667,9 +701,20 @@ public sealed class MainWindow:Window{
  }
  void ShowLocal(Game game){
   var local=Extra.Local(game.Id);
+  bool steam=game.Store=="Steam";
   detailSize.Text=local?.Size??"—";
   detailState.Text=local?.State??"—";
   detailState.Foreground=Ui.B(local?.Tone??"#C6D4DF");
+  bool bar=local!=null&&local.Percent>=0;
+  stateBar.Visibility=bar?Visibility.Visible:Visibility.Collapsed;
+  if(bar)stateScale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(local!.Percent/100.0,TimeSpan.FromMilliseconds(400)));
+  detailTiles2.Visibility=steam&&(game.Installed||local!=null)?Visibility.Visible:Visibility.Collapsed;
+  bool update=steam&&local!=null&&local.Update;
+  if(update!=detailUpdate){
+   detailUpdate=update;
+   ShowDetailState(game);
+   UpdateHints();
+  }
  }
  async void LoadPadChip(Game game){
   padChip.Visibility=Visibility.Collapsed;
@@ -739,6 +784,7 @@ public sealed class MainWindow:Window{
  async void OpenDetails(Game game){
   bool steam=game.Store=="Steam";
   inDetails=true;
+  detailUpdate=false;
   int token=++shotToken;
   gallery.Clear();
   galleryIndex=0;
@@ -756,13 +802,14 @@ public sealed class MainWindow:Window{
   detailSync.Text=steam?CloudLog.Describe(first):"";
   detailSync.Foreground=Ui.B(CloudLog.Tone(first));
   detailTiles.Visibility=steam?Visibility.Visible:Visibility.Collapsed;
-  detailTiles2.Visibility=steam&&game.Installed?Visibility.Visible:Visibility.Collapsed;
   detailLast.Text=LastPlayedText(game.LastPlayed);
+  stateScale.BeginAnimation(ScaleTransform.ScaleXProperty,null);
+  stateScale.ScaleX=0;
+  ShowDetailState(game);
   ShowLocal(game);
   padChip.Visibility=Visibility.Collapsed;
   detailDesc.Text="";
   detailDesc.Visibility=Visibility.Collapsed;
-  ShowDetailState(game);
   detailArt.BeginAnimation(UIElement.OpacityProperty,null);
   detailArt.Opacity=0;
   detailArt.Source=null;
@@ -899,7 +946,7 @@ public sealed class MainWindow:Window{
    var current=CloudLog.Status(detailGame.Id);
    detailSync.Text=CloudLog.Describe(current);
    detailSync.Foreground=Ui.B(CloudLog.Tone(current));
-   if(detailGame.Installed)ShowLocal(detailGame);
+   ShowLocal(detailGame);
   }
  }
  void Supervise(){
@@ -964,7 +1011,8 @@ public sealed class MainWindow:Window{
   if(code==6){menu.Open();Dim(true);UpdateHints();return;}
   if(inDetails){
    if(code==1)CloseDetails();
-   else if(code==0||code==2)Launch(detailGame);
+   else if(code==0)Launch(detailGame);
+   else if(code==2){if(detailUpdate&&detailGame!=null)UpdateGame(detailGame);}
    else if(code==3&&detailGame!=null)OpenActions(detailGame);
    else if(code==9)MoveShot(-1);
    else if(code==10)MoveShot(1);

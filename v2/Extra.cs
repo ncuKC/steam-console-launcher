@@ -4,7 +4,7 @@ using System.Text.Json;
 using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
-public sealed record LocalInfo(string Size,string State,string Tone);
+public sealed record LocalInfo(string Size,string State,string Tone,int Percent=-1,bool Update=false);
 public sealed record ReviewInfo(string Text,string Detail,string Tone,DateTime When);
 public sealed record NewsInfo(string Title,long Date,DateTime When);
 public static class Extra{
@@ -221,17 +221,20 @@ public static class Extra{
    long downloaded=Number(map,"BytesDownloaded");
    string state;
    string tone="#C8F59B";
+   int progress=-1;
+   bool update=false;
    if((flags&512)!=0){state="Обновление на паузе";tone="#FFB347";}
    else if((flags&(256|1048576))!=0){
-    int percent=toDownload>0?(int)Math.Min(100,downloaded*100/toDownload):0;
-    state="Загрузка: "+percent+"%";
+    int value=toDownload>0?(int)Math.Min(100,downloaded*100/toDownload):0;
+    progress=value;
+    state="Загрузка: "+value+"%";
     tone="#66C0F4";
    }
    else if((flags&2097152)!=0){state="Установка обновления";tone="#66C0F4";}
-   else if((flags&2)!=0){state="Доступно обновление";tone="#FFB347";}
+   else if((flags&2)!=0){state="Доступно обновление";tone="#FFB347";update=true;}
    else if((flags&4)!=0)state="Актуальна";
    else{state="Не готова";tone="#FF7A7A";}
-   return new LocalInfo(size>0?Bytes(size):"—",state,tone);
+   return new LocalInfo(size>0?Bytes(size):"—",state,tone,progress,update);
   }catch{return null;}
  }
 }
