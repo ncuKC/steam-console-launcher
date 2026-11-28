@@ -10,16 +10,39 @@ public static class Art{
  static readonly SemaphoreSlim MatchGate=new(1);
  static readonly ConcurrentDictionary<string,Lazy<Task<BitmapImage?>>> Cache=new();
  static readonly ConcurrentDictionary<string,Lazy<Task<List<BitmapImage>>>> ArtCache=new();
+ static readonly ConcurrentDictionary<string,DateTime> Failed=new();
+ static readonly ConcurrentDictionary<string,DateTime> ArtFailed=new();
  static readonly string[] Hosts={"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"};
  static Dictionary<string,string>? matches;
  public static readonly ConcurrentDictionary<string,string> Names=new();
  static Art(){
   Web.DefaultRequestHeaders.UserAgent.ParseAdd("SteamConsoleLauncher/1.0");
  }
+ static void Note(string text){
+  try{
+   Directory.CreateDirectory(Library.Root);
+   var file=Path.Combine(Library.Root,"log.txt");
+   if(File.Exists(file)&&new FileInfo(file).Length>200000)File.Delete(file);
+   File.AppendAllText(file,DateTime.Now.ToString("HH:mm:ss")+"  "+text+"\n");
+  }catch{}
+ }
  public static Task<BitmapImage?> Wide(string id)=>Get(id+"_wide",new[]{"capsule_616x353.jpg","header.jpg"},id,600);
  public static Task<BitmapImage?> Hero(string id)=>Get(id+"_hero2",new[]{"library_hero_2x.jpg","library_hero.jpg"},id,2560);
  public static Task<BitmapImage?> Logo(string id)=>Get(id+"_logo",new[]{"logo.png","library_logo.png"},id,700);
- public static Task<List<BitmapImage>> Arts(string id)=>ArtCache.GetOrAdd(id,_=>new Lazy<Task<List<BitmapImage>>>(()=>LoadArts(id))).Value;
+ public static Task<List<BitmapImage>> Arts(string id){
+  if(ArtFailed.TryGetValue(id,out var when)&&(DateTime.Now-when).TotalSeconds<90)return Task.FromResult(new List<BitmapImage>());
+  return ArtCache.GetOrAdd(id,_=>new Lazy<Task<List<BitmapImage>>>(()=>Collect(id))).Value;
+ }
+ static async Task<List<BitmapImage>> Collect(string id){
+  var list=new List<BitmapImage>();
+  try{list=await LoadArts(id);}catch{}
+  if(list.Count==0){
+   ArtCache.TryRemove(id,out _);
+   ArtFailed[id]=DateTime.Now;
+   Note("Нет дополнительных артов: "+id+(Names.ContainsKey(id)?"":" (нет названия игры)"));
+  }
+  return list;
+ }
  static string Hash(string text)=>Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(text))).Substring(0,12);
  static string Clean(string name)=>Regex.Replace(Regex.Replace(name,"[™®©]",""),@"\s*\(.*?\)","").Trim();
  static async Task<List<string>> WallUrls(string name){
@@ -85,8 +108,19 @@ public static class Art{
   return list;
  }
  static Task<BitmapImage?> Get(string key,string[] names,string id,int width){
-  if(id.Length>0&&id.All(char.IsDigit))return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
-  return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Other(key,names,id,width))).Value;
+  if(Failed.TryGetValue(key,out var when)&&(DateTime.Now-when).TotalSeconds<60)return Task.FromResult<BitmapImage?>(null);
+  Func<Task<BitmapImage?>> make=id.Length>0&&id.All(char.IsDigit)?()=>Load(key,names,id,width):()=>Other(key,names,id,width);
+  return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Remember(key,make))).Value;
+ }
+ static async Task<BitmapImage?> Remember(string key,Func<Task<BitmapImage?>> make){
+  BitmapImage? image=null;
+  try{image=await make();}catch{}
+  if(image==null){
+   Cache.TryRemove(key,out _);
+   Failed[key]=DateTime.Now;
+   Note("Нет картинки: "+key);
+  }else Failed.TryRemove(key,out _);
+  return image;
  }
  static async Task<BitmapImage?> Other(string key,string[] names,string id,int width){
   var own=await Local(key,id,width);
