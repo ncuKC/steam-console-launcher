@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using Microsoft.Win32;
 using Shapes=System.Windows.Shapes;
@@ -40,15 +41,26 @@ public sealed class MainWindow:Window{
  readonly Shelves library=new();
  readonly Grid store=new(){Visibility=Visibility.Collapsed};
  readonly Grid details=new(){Visibility=Visibility.Collapsed,Background=Ui.B("#0B0F15")};
- readonly Image detailArt=new(){Stretch=Stretch.UniformToFill};
- readonly TextBlock detailTitle=new(){FontSize=68,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,MaxWidth=1100};
- readonly TextBlock detailStatus=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,0,0,10)};
- readonly TextBlock detailPlay=new(){FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
- readonly TextBlock detailMeta=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),Margin=new Thickness(0,14,0,0)};
- readonly TextBlock detailStats=new(){FontSize=24,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,10,0,0)};
- readonly TextBlock detailSync=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),Margin=new Thickness(0,6,0,0)};
- readonly TextBlock detailDesc=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxWidth=900,MaxHeight=150,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,18,0,0)};
- readonly TextBlock detailHint=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(120,0,0,50)};
+ readonly Image detailArt=new(){Stretch=Stretch.UniformToFill,Opacity=0,RenderTransformOrigin=new Point(.5,.5)};
+ readonly ScaleTransform artZoom=new(1,1);
+ readonly Border detailCard=new(){Width=1000,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(100,0,0,0),Padding=new Thickness(48,40,48,40),CornerRadius=new CornerRadius(24),Background=new LinearGradientBrush(Color.FromArgb(0xE6,0x18,0x25,0x34),Color.FromArgb(0xD0,0x0B,0x11,0x19),60),BorderBrush=new SolidColorBrush(Color.FromArgb(0x44,255,255,255)),BorderThickness=new Thickness(1),Effect=new DropShadowEffect{BlurRadius=70,ShadowDepth=0,Opacity=.8,Color=Colors.Black}};
+ readonly TranslateTransform cardShift=new(-70,0);
+ readonly StackPanel detailBody=new();
+ readonly Border statusChip=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Margin=new Thickness(0,0,10,0)};
+ readonly Border favChip=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Background=Ui.B("#CC8A6D1B"),Visibility=Visibility.Collapsed,Child=new TextBlock{Text="★ ИЗБРАННОЕ",FontSize=16,FontWeight=FontWeights.Bold,Foreground=Ui.B("#FFE08A")}};
+ readonly TextBlock detailStatus=new(){FontSize=16,FontWeight=FontWeights.Bold};
+ readonly TextBlock detailStore=new(){FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#C6D4DF")};
+ readonly TextBlock detailTitle=new(){FontSize=64,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,18,0,0)};
+ readonly TextBlock detailMeta=new(){FontSize=22,Foreground=Ui.B("#9FB3C8"),Margin=new Thickness(0,6,0,0),Visibility=Visibility.Collapsed};
+ readonly Grid detailTiles=new(){Margin=new Thickness(0,24,0,0)};
+ readonly TextBlock detailStats=new(){FontSize=26,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
+ readonly TextBlock detailSync=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap};
+ readonly TextBlock detailDesc=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxHeight=140,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,22,0,0),Visibility=Visibility.Collapsed};
+ readonly TextBlock detailPlay=new(){FontSize=26,FontWeight=FontWeights.Bold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(14,0,0,0)};
+ readonly TextBlock detailFavLabel=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)};
+ readonly (Border Box,TextBlock Text) badgeA=MakeBadge();
+ readonly (Border Box,TextBlock Text) badgeY=MakeBadge();
+ readonly (Border Box,TextBlock Text) badgeB=MakeBadge();
  readonly TextBlock chip=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,16,44,0),Visibility=Visibility.Collapsed};
  readonly TextBlock screenName=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center};
  readonly TextBlock tabDots=new(){FontSize=14,Foreground=Ui.B("#66C0F4"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(20,0,0,0)};
@@ -71,6 +83,29 @@ public sealed class MainWindow:Window{
  DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now;
  Game? detailGame;
  Shelves? Active=>tab==1?library:null;
+ static Color Hex(string text)=>(Color)ColorConverter.ConvertFromString(text);
+ static (Border,TextBlock) MakeBadge(){
+  var text=new TextBlock{FontSize=15,FontWeight=FontWeights.Bold,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(6,0,6,0)};
+  var box=new Border{MinWidth=34,Height=34,CornerRadius=new CornerRadius(17),BorderThickness=new Thickness(2),BorderBrush=Brushes.White,Background=Ui.B("#33000000"),Child=text};
+  return (box,text);
+ }
+ static Border Tile(string label,TextBlock value,Thickness margin){
+  var panel=new StackPanel();
+  panel.Children.Add(new TextBlock{Text=label,FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#7F93A8"),Margin=new Thickness(0,0,0,4)});
+  panel.Children.Add(value);
+  return new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(18,12,18,14),Margin=margin,Background=Ui.B("#1FFFFFFF"),Child=panel};
+ }
+ static Border Soft(UIElement child)=>new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(20,12,26,12),Margin=new Thickness(0,0,16,0),Background=Ui.B("#26FFFFFF"),Child=child};
+ static void Rise(UIElement element,int delay){
+  var move=new TranslateTransform(0,26);
+  element.BeginAnimation(UIElement.OpacityProperty,null);
+  element.Opacity=0;
+  element.RenderTransform=move;
+  var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
+  var begin=TimeSpan.FromMilliseconds(delay);
+  element.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(300)){BeginTime=begin});
+  move.BeginAnimation(TranslateTransform.YProperty,new DoubleAnimation(26,0,TimeSpan.FromMilliseconds(380)){BeginTime=begin,EasingFunction=ease});
+ }
  static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
   if(list.Count>0)yield return (title,list);
  }
@@ -102,18 +137,10 @@ public sealed class MainWindow:Window{
   else if(code==1)Sound.Play("back");
   else if(code==3||code==6)Sound.Play("open");
  }
- static string Describe(PlayInfo? info){
-  if(info==null)return "Время в игре: нет данных";
+ static string PlayTime(PlayInfo? info){
+  if(info==null)return "нет данных";
   int minutes=info.Minutes;
-  var time=minutes<=0?"ещё не играли":minutes<60?minutes+" мин":(minutes/60)+" ч "+(minutes%60)+" мин";
-  var cloud=info.Cloud switch{
-   "synchronized"=>"сохранения синхронизированы",
-   "conflict"=>"конфликт сохранений",
-   ""=>"облако: нет данных",
-   "uploading" or "downloading" or "inprogress"=>"идёт синхронизация",
-   _=>"облако: "+info.Cloud
-  };
-  return "Время в игре: "+time+"   ·   \u2601 "+cloud;
+  return minutes<=0?"ещё не играли":minutes<60?minutes+" мин":(minutes/60)+" ч "+(minutes%60)+" мин";
  }
  static UIElement ControllerLogo(){
   var canvas=new Canvas{Width=200,Height=140};
@@ -339,18 +366,44 @@ public sealed class MainWindow:Window{
   saverTitle.Text=name;
  }
  void BuildDetails(Grid canvas){
+  detailArt.RenderTransform=artZoom;
   details.Children.Add(detailArt);
-  details.Children.Add(new Border{IsHitTestVisible=false,Width=1300,HorizontalAlignment=HorizontalAlignment.Left,Background=Ui.Gradient(new Point(0,0),new Point(1,0),235,0)});
-  var panel=new StackPanel{HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(120,0,0,0)};
-  panel.Children.Add(detailStatus);
-  panel.Children.Add(detailTitle);
-  panel.Children.Add(detailMeta);
-  panel.Children.Add(detailStats);
-  panel.Children.Add(detailSync);
-  panel.Children.Add(detailDesc);
-  panel.Children.Add(new Border{Background=Ui.B("#5BA32B"),CornerRadius=new CornerRadius(6),Padding=new Thickness(48,16,48,16),Margin=new Thickness(0,36,0,0),HorizontalAlignment=HorizontalAlignment.Left,Child=detailPlay});
-  details.Children.Add(panel);
-  details.Children.Add(detailHint);
+  details.Children.Add(new Border{IsHitTestVisible=false,Width=1500,HorizontalAlignment=HorizontalAlignment.Left,Background=Ui.Gradient(new Point(0,0),new Point(1,0),235,0)});
+  details.Children.Add(new Border{IsHitTestVisible=false,Height=500,VerticalAlignment=VerticalAlignment.Bottom,Background=Ui.Gradient(new Point(0,0),new Point(0,1),0,200)});
+  var chips=new StackPanel{Orientation=Orientation.Horizontal};
+  statusChip.Child=detailStatus;
+  chips.Children.Add(statusChip);
+  chips.Children.Add(new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Margin=new Thickness(0,0,10,0),Background=Ui.B("#26FFFFFF"),Child=detailStore});
+  chips.Children.Add(favChip);
+  detailBody.Children.Add(chips);
+  detailBody.Children.Add(detailTitle);
+  detailBody.Children.Add(detailMeta);
+  detailTiles.ColumnDefinitions.Add(new ColumnDefinition());
+  detailTiles.ColumnDefinitions.Add(new ColumnDefinition());
+  var timeTile=Tile("ВРЕМЯ В ИГРЕ",detailStats,new Thickness(0,0,8,0));
+  var syncTile=Tile("СОХРАНЕНИЯ",detailSync,new Thickness(8,0,0,0));
+  Grid.SetColumn(syncTile,1);
+  detailTiles.Children.Add(timeTile);
+  detailTiles.Children.Add(syncTile);
+  detailBody.Children.Add(detailTiles);
+  detailBody.Children.Add(detailDesc);
+  var buttons=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,30,0,0)};
+  var play=new StackPanel{Orientation=Orientation.Horizontal};
+  play.Children.Add(badgeA.Box);
+  play.Children.Add(detailPlay);
+  buttons.Children.Add(new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(26,12,34,12),Margin=new Thickness(0,0,16,0),Background=new LinearGradientBrush(Hex("#6FCB36"),Hex("#3F8A1F"),90),Child=play});
+  var fav=new StackPanel{Orientation=Orientation.Horizontal};
+  fav.Children.Add(badgeY.Box);
+  fav.Children.Add(detailFavLabel);
+  buttons.Children.Add(Soft(fav));
+  var back=new StackPanel{Orientation=Orientation.Horizontal};
+  back.Children.Add(badgeB.Box);
+  back.Children.Add(new TextBlock{Text="Назад",FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)});
+  buttons.Children.Add(Soft(back));
+  detailBody.Children.Add(buttons);
+  detailCard.Child=detailBody;
+  detailCard.RenderTransform=cardShift;
+  details.Children.Add(detailCard);
   canvas.Children.Add(details);
  }
  void Dim(bool on)=>dim.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(on?.55:0,TimeSpan.FromMilliseconds(240)));
@@ -526,42 +579,65 @@ public sealed class MainWindow:Window{
  }
  void ShowDetailState(Game game){
   bool fav=Favorites.Has(game.Id);
-  detailStatus.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+" · "+game.Store.ToUpperInvariant()+(fav?"   ★ ИЗБРАННОЕ":"");
-  detailHint.Text=Controller.Label("A")+" / "+Controller.Label("X")+"  "+(game.Installed?"Играть":"Установить")+"        "+Controller.Label("Y")+"  "+(fav?"Убрать из избранного":"В избранное")+"        "+Controller.Label("B")+"  Назад";
+  detailStatus.Text=game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ";
+  detailStatus.Foreground=Ui.B(game.Installed?"#C8F59B":"#C6D4DF");
+  statusChip.Background=Ui.B(game.Installed?"#CC3E7A22":"#CC3A4656");
+  detailStore.Text=game.Store.ToUpperInvariant();
+  favChip.Visibility=fav?Visibility.Visible:Visibility.Collapsed;
+  detailPlay.Text=game.Installed?"Играть":"Установить";
+  detailFavLabel.Text=fav?"Убрать из избранного":"В избранное";
+  badgeA.Text.Text=Controller.Label("A");
+  badgeA.Box.BorderBrush=Controller.Tint("A");
+  badgeY.Text.Text=Controller.Label("Y");
+  badgeY.Box.BorderBrush=Controller.Tint("Y");
+  badgeB.Text.Text=Controller.Label("B");
+  badgeB.Box.BorderBrush=Controller.Tint("B");
  }
  void AnimateDetailsIn(){
   var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
-  var grow=new ScaleTransform(1.04,1.04);
-  details.RenderTransformOrigin=new Point(.5,.5);
-  details.RenderTransform=grow;
-  details.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(220)));
-  grow.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.04,1,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
-  grow.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.04,1,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
+  details.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(250)));
+  artZoom.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.02,1.1,TimeSpan.FromSeconds(30)));
+  artZoom.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.02,1.1,TimeSpan.FromSeconds(30)));
+  cardShift.BeginAnimation(TranslateTransform.XProperty,new DoubleAnimation(-70,0,TimeSpan.FromMilliseconds(420)){EasingFunction=ease});
+  detailCard.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(350)));
+  for(int i=0;i<detailBody.Children.Count;i++)Rise(detailBody.Children[i],120+i*70);
  }
  async void OpenDetails(Game game){
   bool steam=game.Store=="Steam";
   inDetails=true;
   detailGame=game;
   detailTitle.Text=game.Name;
-  detailMeta.Text=steam?"":game.Store;
-  detailStats.Text="";
-  detailSync.Text=steam?CloudLog.Describe(CloudLog.Status(game.Id)):"";
+  detailMeta.Text="";
+  detailMeta.Visibility=Visibility.Collapsed;
+  detailStats.Text="…";
+  var first=steam?CloudLog.Status(game.Id):null;
+  detailSync.Text=steam?CloudLog.Describe(first):"";
+  detailSync.Foreground=Ui.B(CloudLog.Tone(first));
+  detailTiles.Visibility=steam?Visibility.Visible:Visibility.Collapsed;
   detailDesc.Text="";
-  detailPlay.Text=game.Installed?"Играть":"Установить";
+  detailDesc.Visibility=Visibility.Collapsed;
   ShowDetailState(game);
+  detailArt.BeginAnimation(UIElement.OpacityProperty,null);
+  detailArt.Opacity=0;
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
   AnimateDetailsIn();
   var infoTask=steam?Details.Get(game.Id):Task.FromResult<GameInfo?>(null);
   var statsTask=steam?Stats.Get(game.Id):Task.FromResult<PlayInfo?>(null);
-  detailArt.Source=await Art.Hero(game.Id);
+  var art=await Art.Hero(game.Id);
+  if(inDetails&&detailGame==game){
+   detailArt.Source=art;
+   if(art!=null)detailArt.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)));
+  }
   var stats=await statsTask;
-  if(steam&&inDetails&&detailGame==game)detailStats.Text=Describe(stats);
+  if(steam&&inDetails&&detailGame==game)detailStats.Text=PlayTime(stats);
   var info=await infoTask;
   if(info!=null&&inDetails&&detailGame==game){
    var parts=new[]{info.Genres,info.Developer,info.Year}.Where(part=>part.Length>0);
    detailMeta.Text=string.Join(" · ",parts);
+   detailMeta.Visibility=detailMeta.Text.Length>0?Visibility.Visible:Visibility.Collapsed;
    detailDesc.Text=info.Description;
+   detailDesc.Visibility=info.Description.Length>0?Visibility.Visible:Visibility.Collapsed;
   }
  }
  void CloseDetails(){
@@ -634,7 +710,11 @@ public sealed class MainWindow:Window{
     syncToast.Visibility=Visibility.Visible;
    }
   }else if(syncToast.Visibility==Visibility.Visible)syncToast.Visibility=Visibility.Collapsed;
-  if(inDetails&&detailGame!=null&&detailGame.Store=="Steam")detailSync.Text=CloudLog.Describe(CloudLog.Status(detailGame.Id));
+  if(inDetails&&detailGame!=null&&detailGame.Store=="Steam"){
+   var current=CloudLog.Status(detailGame.Id);
+   detailSync.Text=CloudLog.Describe(current);
+   detailSync.Foreground=Ui.B(CloudLog.Tone(current));
+  }
  }
  void Supervise(){
   var raw=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0);
