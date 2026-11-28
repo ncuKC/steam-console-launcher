@@ -12,6 +12,7 @@ public sealed class Sections:Grid{
   "Epic Games"=>("#121215","#3C3C48","#9AA0C8"),
   "GOG"=>("#3E1650","#8A3A96","#E08BF0"),
   "Свои"=>("#0F2B28","#2C7A6E","#4FE3C1"),
+  "Избранное"=>("#2B2410","#8A6D1B","#FFD866"),
   _=>("#1A2432","#3B5878","#7FB2E5")
  };
  static Brush Back(string name){
@@ -47,6 +48,9 @@ public sealed class Sections:Grid{
     canvas.Children.Add(At(new Shapes.Rectangle{Width=76,Height=76,RadiusX=14,RadiusY=14,Stroke=Brushes.White,StrokeThickness=4,StrokeDashArray=new DoubleCollection{4,3}},12,12));
     canvas.Children.Add(Bar(50,30,50,70,7));
     canvas.Children.Add(Bar(30,50,70,50,7));
+    break;
+   case "Избранное":
+    canvas.Children.Add(new Shapes.Path{Data=Geometry.Parse("M50,8 L61,38 L93,38 L67,58 L77,90 L50,70 L23,90 L33,58 L7,38 L39,38 Z"),Stroke=Brushes.White,StrokeThickness=5,StrokeLineJoin=PenLineJoin.Round,Fill=new SolidColorBrush(Hex("#33FFFFFF"))});
     break;
    default:
     var soft=new SolidColorBrush(Hex("#E6FFFFFF"));

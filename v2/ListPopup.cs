@@ -24,11 +24,13 @@ public sealed class ListPopup:Border{
  static readonly FontFamily Icons=new("Segoe MDL2 Assets");
  readonly StackPanel list=new();
  readonly List<Row> rows=new();
+ readonly TextBlock title=new(){Text="Список игр",FontSize=34,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center};
  readonly TranslateTransform shift=new(0,28);
  readonly ScaleTransform grow=new(.96,.96);
  int index,closing;
  bool open;
  public bool IsOpen=>open;
+ public string Title{get=>title.Text;set=>title.Text=value;}
  public event Action? Closed;
  public ListPopup(){
   Width=800;
@@ -50,8 +52,8 @@ public sealed class ListPopup:Border{
   var root=new StackPanel();
   Child=root;
   var header=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(8,0,0,10)};
-  header.Children.Add(new TextBlock{Text="",FontFamily=Icons,FontSize=30,Foreground=AccentBrush,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,16,0)});
-  header.Children.Add(new TextBlock{Text="Список игр",FontSize=34,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center});
+  header.Children.Add(new TextBlock{Text="\ue8fd",FontFamily=Icons,FontSize=30,Foreground=AccentBrush,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,16,0)});
+  header.Children.Add(title);
   root.Children.Add(header);
   root.Children.Add(new Border{Height=2,Margin=new Thickness(8,0,8,14),Background=new LinearGradientBrush(Accent,Colors.Transparent,0)});
   root.Children.Add(list);
