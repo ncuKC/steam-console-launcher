@@ -82,7 +82,7 @@ jobs:
           $files = @(Get-ChildItem Releases -File | ForEach-Object { $_.FullName })
           if (!$files.Count) { throw 'No release assets found' }
           $summary = ($env:COMMIT_MSG -replace '\[release\]\s*', '').Trim()
-          if (!$summary) { $summary = 'Обновление Steam Console Launcher' }
+          if (!$summary) { $summary = 'Обновление PC Game Launcher' }
           $notes = "Windows x64.`n`nИзменения: $summary`n`nУстановите Setup.exe для обновлений из лаунчера. Сборка ${{ github.sha }}."
-          gh release create "v$version" @files --repo $env:GH_REPO --target '${{ github.sha }}' --title "Steam Console Launcher $version" --notes $notes
+          gh release create "v$version" @files --repo $env:GH_REPO --target '${{ github.sha }}' --title "PC Game Launcher $version" --notes $notes
           if ($LASTEXITCODE -ne 0) { throw 'Release publication failed' }

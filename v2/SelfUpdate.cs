@@ -31,7 +31,7 @@ public static class SelfUpdate{
   if(busy||!window.Topmost)return;
   busy=true;
   try{
-   manager??=new UpdateManager(new GithubSource("https://github.com/ncuKC/steam-console-launcher",null,false));
+   manager??=new UpdateManager(new GithubSource("https://github.com/ncuKC/pc-game-launcher",null,false));
    if(!manager.IsInstalled)return;
    var update=await manager.CheckForUpdatesAsync();
    if(update==null)return;
