@@ -14,6 +14,9 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailTitle=new(){FontSize=68,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,MaxWidth=1100};
  readonly TextBlock detailStatus=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,0,0,10)};
  readonly TextBlock detailPlay=new(){FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
+ readonly TextBlock detailMeta=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),Margin=new Thickness(0,14,0,0)};
+ readonly TextBlock detailDesc=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxWidth=900,MaxHeight=150,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,18,0,0)};
+ readonly TextBlock detailHint=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(120,0,0,50)};
  readonly TextBlock chip=new(){FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,14,44,0),Visibility=Visibility.Collapsed};
  readonly Border[] tabBorders=new Border[3];
  readonly TextBlock clock=new(){FontSize=26,Foreground=Ui.B("#C6D4DF"),VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Right};
@@ -25,7 +28,7 @@ public sealed class MainWindow:Window{
  List<Game> games=new();
  int tab,version,comboTicks,filter;
  string query="";
- bool inDetails;
+ bool inDetails,favChanged;
  Game? detailGame;
  Shelves? Active=>tab==0?home:tab==1?library:null;
  static TextBlock Hint(string text)=>new(){Text=text,FontSize=18,Foreground=Ui.B("#8F98A0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,10,0)};
@@ -107,9 +110,11 @@ public sealed class MainWindow:Window{
   var panel=new StackPanel{HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(120,0,0,0)};
   panel.Children.Add(detailStatus);
   panel.Children.Add(detailTitle);
+  panel.Children.Add(detailMeta);
+  panel.Children.Add(detailDesc);
   panel.Children.Add(new Border{Background=Ui.B("#5BA32B"),CornerRadius=new CornerRadius(6),Padding=new Thickness(48,16,48,16),Margin=new Thickness(0,36,0,0),HorizontalAlignment=HorizontalAlignment.Left,Child=detailPlay});
   details.Children.Add(panel);
-  details.Children.Add(new TextBlock{Text="X  Играть        B  Назад",FontSize=22,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(120,0,0,50)});
+  details.Children.Add(detailHint);
   canvas.Children.Add(details);
  }
  void SetHints(params (string Glyph,string Text)[] items){
@@ -157,10 +162,16 @@ public sealed class MainWindow:Window{
   UpdateHints();
  }
  void FillShelves(){
+  var favorites=games.Where(item=>Favorites.Has(item.Id)).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   var recent=games.Where(item=>item.Installed&&item.LastPlayed>0).OrderByDescending(item=>item.LastPlayed).Take(12).ToList();
   var installed=games.Where(item=>item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   var others=games.Where(item=>!item.Installed).OrderByDescending(item=>item.LastPlayed).ThenBy(item=>item.Name).ToList();
-  home.SetRows(new[]{("Недавние",recent),("Установленные игры",installed),("Ещё в коллекции",others.Take(24).ToList())});
+  var rows=new List<(string,List<Game>)>();
+  if(favorites.Count>0)rows.Add(("Избранное",favorites));
+  rows.Add(("Недавние",recent));
+  rows.Add(("Установленные игры",installed));
+  rows.Add(("Ещё в коллекции",others.Take(24).ToList()));
+  home.SetRows(rows);
   FillLibrary();
   if(Active?.Current is Game current)OnFocused(current);
  }
@@ -180,19 +191,34 @@ public sealed class MainWindow:Window{
   var image=await Art.Hero(game.Id);
   if(mine==version)backdrop.Source=image;
  }
+ void ShowDetailState(Game game){
+  bool fav=Favorites.Has(game.Id);
+  detailStatus.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+(fav?"   ★ ИЗБРАННОЕ":"");
+  detailHint.Text="A / X  "+(game.Installed?"Играть":"Установить")+"        Y  "+(fav?"Убрать из избранного":"В избранное")+"        B  Назад";
+ }
  async void OpenDetails(Game game){
   inDetails=true;
   detailGame=game;
   detailTitle.Text=game.Name;
-  detailStatus.Text=game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ";
+  detailMeta.Text="";
+  detailDesc.Text="";
   detailPlay.Text=game.Installed?"Играть":"Установить";
+  ShowDetailState(game);
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
+  var infoTask=Details.Get(game.Id);
   detailArt.Source=await Art.Hero(game.Id);
+  var info=await infoTask;
+  if(info!=null&&inDetails&&detailGame==game){
+   var parts=new[]{info.Genres,info.Developer,info.Year}.Where(part=>part.Length>0);
+   detailMeta.Text=string.Join(" · ",parts);
+   detailDesc.Text=info.Description;
+  }
  }
  void CloseDetails(){
   inDetails=false;
   details.Visibility=Visibility.Collapsed;
+  if(favChanged){favChanged=false;FillShelves();}
  }
  void Launch(Game? game){
   if(game==null)return;
@@ -222,6 +248,11 @@ public sealed class MainWindow:Window{
   if(inDetails){
    if(code==1)CloseDetails();
    else if(code==0||code==2)Launch(detailGame);
+   else if(code==3&&detailGame!=null){
+    Favorites.Toggle(detailGame.Id);
+    favChanged=true;
+    ShowDetailState(detailGame);
+   }
    return;
   }
   switch(code){
