@@ -8,11 +8,15 @@ using System.Windows.Threading;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
- static readonly string[] FilterNames={"\u0412\u0441\u0435","\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0435","\u041d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0435","\u0418\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435","\u041d\u0435\u0434\u0430\u0432\u043d\u0438\u0435"};
- static readonly string[] StoreNames={"\u0412\u0441\u0435 \u0438\u0433\u0440\u044b","Steam","Epic Games","GOG","\u0421\u0432\u043e\u0438"};
- static readonly string[] TabNames={"\u0413\u043b\u0430\u0432\u043d\u0430\u044f","\u0411\u0438\u0431\u043b\u0438\u043e\u0442\u0435\u043a\u0430","\u041c\u0430\u0433\u0430\u0437\u0438\u043d"};
+ static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
+ static readonly string[] StoreNames={"Все игры","Steam","Epic Games","GOG","Свои"};
+ static readonly string[] TabNames={"Главная","Библиотека","Магазин"};
+ readonly Border scene=new(){Visibility=Visibility.Collapsed};
  readonly Image backdrop=new(){Stretch=Stretch.UniformToFill};
  readonly Image backdropFront=new(){Stretch=Stretch.UniformToFill,Opacity=0};
+ readonly Border dim=new(){Background=Brushes.Black,Opacity=0,IsHitTestVisible=false};
+ readonly Border syncToast=new(){Background=Ui.B("#E61B2838"),CornerRadius=new CornerRadius(12),Padding=new Thickness(20,12,20,12),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,76,40,0),Visibility=Visibility.Collapsed};
+ readonly TextBlock syncText=new(){FontSize=20,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly DispatcherTimer slideTimer=new(){Interval=TimeSpan.FromSeconds(9)};
  readonly Sections sections=new();
  readonly Shelves library=new();
@@ -24,6 +28,7 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailPlay=new(){FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly TextBlock detailMeta=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),Margin=new Thickness(0,14,0,0)};
  readonly TextBlock detailStats=new(){FontSize=24,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,10,0,0)};
+ readonly TextBlock detailSync=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),Margin=new Thickness(0,6,0,0)};
  readonly TextBlock detailDesc=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxWidth=900,MaxHeight=150,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,18,0,0)};
  readonly TextBlock detailHint=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(120,0,0,50)};
  readonly TextBlock chip=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,16,44,0),Visibility=Visibility.Collapsed};
@@ -41,18 +46,17 @@ public sealed class MainWindow:Window{
  List<string> letters=new();
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
- int tab,version,comboTicks,filter,sort=1,letterIndex,pollTicks,watchTicks,source,slideIndex;
- bool reverse,watchSeen,keyMode;
- string? watchId;
+ int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks;
+ bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy;
+ string? watchId,watchDir,lastSteamId;
  string query="";
- string pendingKey="";
- bool inDetails,favChanged;
+ DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue;
  Game? detailGame;
  Shelves? Active=>tab==1?library:null;
  static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
   if(list.Count>0)yield return (title,list);
  }
- static (Func<string>,Action<int>) Item(Func<string> text,Action<int> act)=>(text,act);
+ static (Func<string>,Action<int>,string) Item(Func<string> text,Action<int> act,string icon)=>(text,act,icon);
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
@@ -71,24 +75,25 @@ public sealed class MainWindow:Window{
   else if(code==3||code==6)Sound.Play("open");
  }
  static string Describe(PlayInfo? info){
-  if(info==null)return "\u0412\u0440\u0435\u043c\u044f \u0432 \u0438\u0433\u0440\u0435: \u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445";
+  if(info==null)return "Время в игре: нет данных";
   int minutes=info.Minutes;
-  var time=minutes<=0?"\u0435\u0449\u0451 \u043d\u0435 \u0438\u0433\u0440\u0430\u043b\u0438":minutes<60?minutes+" \u043c\u0438\u043d":(minutes/60)+" \u0447 "+(minutes%60)+" \u043c\u0438\u043d";
+  var time=minutes<=0?"ещё не играли":minutes<60?minutes+" мин":(minutes/60)+" ч "+(minutes%60)+" мин";
   var cloud=info.Cloud switch{
-   "synchronized"=>"\u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u044f \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0438\u0440\u043e\u0432\u0430\u043d\u044b",
-   "conflict"=>"\u043a\u043e\u043d\u0444\u043b\u0438\u043a\u0442 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0439",
-   ""=>"\u043e\u0431\u043b\u0430\u043a\u043e: \u043d\u0435\u0442 \u0434\u0430\u043d\u043d\u044b\u0445",
-   "uploading" or "downloading" or "inprogress"=>"\u0438\u0434\u0451\u0442 \u0441\u0438\u043d\u0445\u0440\u043e\u043d\u0438\u0437\u0430\u0446\u0438\u044f",
-   _=>"\u043e\u0431\u043b\u0430\u043a\u043e: "+info.Cloud
+   "synchronized"=>"сохранения синхронизированы",
+   "conflict"=>"конфликт сохранений",
+   ""=>"облако: нет данных",
+   "uploading" or "downloading" or "inprogress"=>"идёт синхронизация",
+   _=>"облако: "+info.Cloud
   };
-  return "\u0412\u0440\u0435\u043c\u044f \u0432 \u0438\u0433\u0440\u0435: "+time+"   \u00b7   \u2601 "+cloud;
+  return "Время в игре: "+time+"   ·   \u2601 "+cloud;
  }
  public MainWindow(){
   Sound.Load();
-  Art.LoadKey();
+  Controller.Refresh();
   Title="PLAY";
   WindowStyle=WindowStyle.None;
   WindowState=WindowState.Maximized;
+  Topmost=true;
   Background=Brushes.Black;
   Foreground=Brushes.White;
   Cursor=Cursors.None;
@@ -96,6 +101,7 @@ public sealed class MainWindow:Window{
   library.FixedRows=true;
   var canvas=new Grid{Width=1920,Height=1080,Background=Ui.B("#0B0F15")};
   Content=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};
+  canvas.Children.Add(scene);
   canvas.Children.Add(backdrop);
   canvas.Children.Add(backdropFront);
   canvas.Children.Add(new Border{IsHitTestVisible=false,Width=1300,HorizontalAlignment=HorizontalAlignment.Left,Background=Ui.Gradient(new Point(0,0),new Point(1,0),210,0)});
@@ -120,39 +126,30 @@ public sealed class MainWindow:Window{
   pages.Children.Add(store);
   pages.Children.Add(chip);
   library.Visibility=Visibility.Collapsed;
-  store.Children.Add(new TextBlock{Text="\u041c\u0430\u0433\u0430\u0437\u0438\u043d \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0432 \u0441\u043b\u0435\u0434\u0443\u044e\u0449\u0435\u0439 \u0432\u0435\u0440\u0441\u0438\u0438",FontSize=36,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center});
+  store.Children.Add(new TextBlock{Text="Магазин появится в следующей версии",FontSize=36,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center});
   var bottomBar=new Border{Background=Ui.B("#B3000000"),Padding=new Thickness(40,0,40,0),Child=hints};
   Grid.SetRow(bottomBar,2);
   layout.Children.Add(bottomBar);
   BuildDetails(canvas);
-  keyboard.Changed+=text=>{
-   if(keyMode){pendingKey=text;return;}
-   query=text;
-   FillLibrary();
-  };
-  keyboard.FilterPressed+=()=>{if(!keyMode)CycleFilter();};
-  keyboard.Closed+=()=>{
-   if(keyMode){
-    keyMode=false;
-    if(pendingKey.Length>0){
-     Art.SetKey(pendingKey);
-     if(tab==1&&library.Current is Game current)OnFocused(current);
-     else if(tab==0)sections.Refocus();
-    }
-   }
-   UpdateHints();
-  };
+  syncToast.Child=syncText;
+  canvas.Children.Add(syncToast);
+  canvas.Children.Add(dim);
+  keyboard.Changed+=text=>{query=text;FillLibrary();};
+  keyboard.FilterPressed+=CycleFilter;
+  keyboard.Closed+=UpdateHints;
   canvas.Children.Add(keyboard);
-  popup.Closed+=UpdateHints;
+  popup.Closed+=()=>{if(!menu.IsOpen)Dim(false);UpdateHints();};
   canvas.Children.Add(popup);
-  menu=new SideMenu(CloseMenu,()=>Close());
+  menu=new SideMenu(CloseMenu,()=>Close(),MinimizeLauncher);
   canvas.Children.Add(menu);
-  sections.Focused+=game=>{if(game!=null)OnFocused(game);};
+  sections.StoreFocused+=ShowScene;
   sections.Opened+=index=>{if(index>=0&&index<sectionIds.Count)OpenSection(sectionIds[index]);};
   library.Focused+=OnFocused;
   library.Opened+=OpenDetails;
   PreviewKeyDown+=OnKey;
   slideTimer.Tick+=(_,_)=>NextSlide();
+  StateChanged+=(_,_)=>{if(WindowState!=WindowState.Minimized)userMinimized=false;};
+  Activated+=(_,_)=>{if(watchDir==null&&watchId==null)graceUntil=DateTime.MinValue;};
   Loaded+=async(_,_)=>{
    timer.Tick+=(_,_)=>Tick();
    timer.Start();
@@ -170,36 +167,45 @@ public sealed class MainWindow:Window{
   panel.Children.Add(detailTitle);
   panel.Children.Add(detailMeta);
   panel.Children.Add(detailStats);
+  panel.Children.Add(detailSync);
   panel.Children.Add(detailDesc);
   panel.Children.Add(new Border{Background=Ui.B("#5BA32B"),CornerRadius=new CornerRadius(6),Padding=new Thickness(48,16,48,16),Margin=new Thickness(0,36,0,0),HorizontalAlignment=HorizontalAlignment.Left,Child=detailPlay});
   details.Children.Add(panel);
   details.Children.Add(detailHint);
   canvas.Children.Add(details);
  }
+ void Dim(bool on)=>dim.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(on?.55:0,TimeSpan.FromMilliseconds(240)));
  void SetHints(params (string Glyph,string Text)[] items){
   hints.Children.Clear();
   foreach(var (glyph,text) in items){
+   var tint=Controller.Tint(glyph);
    var group=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,30,0)};
-   group.Children.Add(new Border{MinWidth=28,Height=28,CornerRadius=new CornerRadius(14),BorderBrush=Brushes.White,BorderThickness=new Thickness(1.5),Child=new TextBlock{Text=glyph,FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(6,0,6,0)}});
+   group.Children.Add(new Border{MinWidth=28,Height=28,CornerRadius=new CornerRadius(14),BorderBrush=tint,BorderThickness=new Thickness(1.5),Child=new TextBlock{Text=Controller.Label(glyph),FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=tint,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(6,0,6,0)}});
    group.Children.Add(new TextBlock{Text=text,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,0,0)});
    hints.Children.Add(group);
   }
  }
  void UpdateHints(){
-  if(keyboard.IsOpen)SetHints(("A","\u0412\u0432\u043e\u0434"),("X","\u0421\u0442\u0435\u0440\u0435\u0442\u044c"),("Y","\u041f\u0440\u043e\u0431\u0435\u043b"),("B","\u0417\u0430\u043a\u0440\u044b\u0442\u044c"));
-  else if(popup.IsOpen)SetHints(("A","\u0412\u044b\u0431\u0440\u0430\u0442\u044c"),("\u25c4\u25ba","\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u044c"),("B","\u0417\u0430\u043a\u0440\u044b\u0442\u044c"));
-  else if(menu.IsOpen)SetHints(("A","\u0412\u044b\u0431\u0440\u0430\u0442\u044c"),("B","\u041d\u0430\u0437\u0430\u0434"));
-  else if(tab==2)SetHints(("\u2261","\u041c\u0435\u043d\u044e"),("LB/RB","\u0412\u043a\u043b\u0430\u0434\u043a\u0430"));
-  else if(tab==0)SetHints(("A","\u041e\u0442\u043a\u0440\u044b\u0442\u044c"),("\u2261","\u041c\u0435\u043d\u044e"),("LB/RB","\u0412\u043a\u043b\u0430\u0434\u043a\u0430"));
-  else SetHints(("A","\u041e\u0442\u043a\u0440\u044b\u0442\u044c"),("X","\u0418\u0433\u0440\u0430\u0442\u044c"),("Y","\u0421\u043f\u0438\u0441\u043e\u043a"),("B","\u0420\u0430\u0437\u0434\u0435\u043b\u044b"),("\u2261","\u041c\u0435\u043d\u044e"));
+  if(keyboard.IsOpen)SetHints(("A","Ввод"),("X","Стереть"),("Y","Пробел"),("B","Закрыть"));
+  else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
+  else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
+  else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Вкладка"));
+  else if(tab==0)SetHints(("A","Открыть"),("≡","Меню"),("LB/RB","Вкладка"));
+  else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("B","Разделы"),("≡","Меню"));
  }
  void CloseMenu(){
   menu.Close();
+  Dim(false);
   UpdateHints();
  }
+ void MinimizeLauncher(){
+  CloseMenu();
+  userMinimized=true;
+  WindowState=WindowState.Minimized;
+ }
  string FilterName()=>FilterNames[filter];
- string FilterText()=>"\u0424\u0438\u043b\u044c\u0442\u0440: "+FilterName();
- string SortName()=>sort==1?"\u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0438\u0439 \u0437\u0430\u043f\u0443\u0441\u043a":sort==2?"\u0438\u0437\u0431\u0440\u0430\u043d\u043d\u044b\u0435 \u0441\u0432\u0435\u0440\u0445\u0443":"\u043d\u0430\u0437\u0432\u0430\u043d\u0438\u0435";
+ string FilterText()=>"Фильтр: "+FilterName();
+ string SortName()=>sort==1?"последний запуск":sort==2?"избранные сверху":"название";
  void CycleFilter(){
   filter=(filter+1)%FilterNames.Length;
   keyboard.SetFilter(FilterText());
@@ -217,41 +223,32 @@ public sealed class MainWindow:Window{
  }
  void OpenSearch(){
   if(tab!=1)SelectTab(1);
-  keyMode=false;
   keyboard.Open(query,FilterText());
-  Appear(keyboard,0,40);
-  UpdateHints();
- }
- void OpenKeyEntry(){
-  keyMode=true;
-  pendingKey="";
-  keyboard.Open("","SteamGridDB API key");
   Appear(keyboard,0,40);
   UpdateHints();
  }
  void OpenListMenu(){
   if(tab!=1)SelectTab(1);
   popup.SetItems(new[]{
-   Item(()=>query.Length>0?"\u041f\u043e\u0438\u0441\u043a: "+query:"\u041f\u043e\u0438\u0441\u043a",_=>{popup.Close();OpenSearch();}),
-   Item(()=>"\u041b\u0430\u0443\u043d\u0447\u0435\u0440: "+StoreNames[source],direction=>{source=(source+Step(direction)+StoreNames.Length)%StoreNames.Length;FillLibrary();}),
-   Item(()=>"\u0421\u043e\u0440\u0442\u0438\u0440\u043e\u0432\u043a\u0430: "+SortName(),direction=>{sort=(sort+Step(direction)+3)%3;FillLibrary();}),
-   Item(()=>"\u041f\u043e\u0440\u044f\u0434\u043e\u043a: "+(reverse?"\u043e\u0431\u0440\u0430\u0442\u043d\u044b\u0439":"\u043f\u0440\u044f\u043c\u043e\u0439"),_=>{reverse=!reverse;FillLibrary();}),
-   Item(()=>FilterText(),direction=>{filter=(filter+Step(direction)+FilterNames.Length)%FilterNames.Length;keyboard.SetFilter(FilterText());FillLibrary();}),
-   Item(()=>"\u041f\u0435\u0440\u0435\u0439\u0442\u0438 \u043a \u0431\u0443\u043a\u0432\u0435: "+(letters.Count>0?letters[letterIndex]:"-"),direction=>{
+   Item(()=>query.Length>0?"Поиск: "+query:"Поиск",_=>{popup.Close();OpenSearch();},"\ue721"),
+   Item(()=>"Лаунчер: "+StoreNames[source],direction=>{source=(source+Step(direction)+StoreNames.Length)%StoreNames.Length;FillLibrary();},"\ue7fc"),
+   Item(()=>"Сортировка: "+SortName(),direction=>{sort=(sort+Step(direction)+3)%3;FillLibrary();},"\ue8cb"),
+   Item(()=>"Порядок: "+(reverse?"обратный":"прямой"),_=>{reverse=!reverse;FillLibrary();},"\ue70d"),
+   Item(()=>FilterText(),direction=>{filter=(filter+Step(direction)+FilterNames.Length)%FilterNames.Length;keyboard.SetFilter(FilterText());FillLibrary();},"\ue71c"),
+   Item(()=>"Перейти к букве: "+(letters.Count>0?letters[letterIndex]:"-"),direction=>{
     if(letters.Count==0)return;
     if(direction==0){
      var hit=libraryOrder.FirstOrDefault(game=>Letter(game)==letters[letterIndex]);
      popup.Close();
      if(hit!=null)library.Select(hit.Id);
     }else letterIndex=(letterIndex+direction+letters.Count)%letters.Count;
-   }),
-   Item(()=>"\u0417\u0432\u0443\u043a\u0438: "+(Sound.Enabled?"\u0432\u043a\u043b":"\u0432\u044b\u043a\u043b"),_=>Sound.Toggle()),
-   Item(()=>"\u0424\u043e\u043d\u044b SteamGridDB: "+(Art.HasKey?"\u043a\u043b\u044e\u0447 \u0437\u0430\u0434\u0430\u043d":"\u043d\u0443\u0436\u0435\u043d \u043a\u043b\u044e\u0447"),_=>{popup.Close();OpenKeyEntry();}),
-   Item(()=>"\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0430\u043f\u043a\u0443 \u00ab\u0421\u0432\u043e\u0438\u00bb",_=>{popup.Close();Stores.OpenOwn();}),
-   Item(()=>"\u0421\u0431\u0440\u043e\u0441\u0438\u0442\u044c \u043f\u043e\u0438\u0441\u043a \u0438 \u0444\u0438\u043b\u044c\u0442\u0440",_=>{query="";filter=0;source=0;sort=1;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
+   },"\ue8d2"),
+   Item(()=>"Звуки: "+(Sound.Enabled?"вкл":"выкл"),_=>Sound.Toggle(),"\ue767"),
+   Item(()=>"Открыть папку «Свои»",_=>{popup.Close();Stores.OpenOwn();},"\ue8b7"),
+   Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;source=0;sort=1;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();},"\ue7a7")
   });
   popup.Open();
-  Appear(popup,0,30);
+  Dim(true);
   UpdateHints();
  }
  void SelectTab(int index){
@@ -262,6 +259,7 @@ public sealed class MainWindow:Window{
   sections.Visibility=tab==0?Visibility.Visible:Visibility.Collapsed;
   library.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   store.Visibility=tab==2?Visibility.Visible:Visibility.Collapsed;
+  scene.Visibility=tab==0?Visibility.Visible:Visibility.Collapsed;
   chip.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   if(index!=previous){
    UIElement page=tab==0?(UIElement)sections:tab==1?(UIElement)library:store;
@@ -270,6 +268,18 @@ public sealed class MainWindow:Window{
   if(tab==0)sections.Refocus();
   else if(tab==1&&library.Current is Game current)OnFocused(current);
   UpdateHints();
+ }
+ void ShowScene(string name){
+  version++;
+  slideTimer.Stop();
+  slides=new List<ImageSource>();
+  backdrop.Source=null;
+  backdropFront.BeginAnimation(UIElement.OpacityProperty,null);
+  backdropFront.Opacity=0;
+  backdropFront.Source=null;
+  scene.Child=Sections.Scene(name);
+  scene.Visibility=Visibility.Visible;
+  scene.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(.15,1,TimeSpan.FromMilliseconds(420)));
  }
  void FillShelves(){
   var items=new List<(string,int,Game?)>();
@@ -297,13 +307,13 @@ public sealed class MainWindow:Window{
   libraryOrder=installed.Concat(others).ToList();
   letters=libraryOrder.Select(Letter).Distinct().OrderBy(item=>item,StringComparer.CurrentCultureIgnoreCase).ToList();
   letterIndex=Math.Clamp(letterIndex,0,Math.Max(0,letters.Count-1));
-  library.EmptyHint=source==4?"\u041f\u043e\u043b\u043e\u0436\u0438\u0442\u0435 \u044f\u0440\u043b\u044b\u043a \u0438\u043b\u0438 exe \u0432 \u043f\u0430\u043f\u043a\u0443 \u00ab\u0421\u0432\u043e\u0438\u00bb: Y \u2192 \u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043f\u0430\u043f\u043a\u0443 \u00ab\u0421\u0432\u043e\u0438\u00bb.":source==2?"\u0417\u0434\u0435\u0441\u044c \u043f\u043e\u044f\u0432\u043b\u044f\u044e\u0442\u0441\u044f \u0438\u0433\u0440\u044b, \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0435 \u0447\u0435\u0440\u0435\u0437 Epic Games Launcher.":source==3?"\u0417\u0434\u0435\u0441\u044c \u043f\u043e\u044f\u0432\u043b\u044f\u044e\u0442\u0441\u044f \u0438\u0433\u0440\u044b, \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0435 \u0438\u0437 GOG.":"\u0418\u0437\u043c\u0435\u043d\u0438\u0442\u0435 \u043f\u043e\u0438\u0441\u043a \u0438\u043b\u0438 \u0444\u0438\u043b\u044c\u0442\u0440.";
-  library.SetRows(Chunks("\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0435",installed).Concat(Chunks("\u041d\u0435 \u0443\u0441\u0442\u0430\u043d\u043e\u0432\u043b\u0435\u043d\u043d\u044b\u0435",others)));
-  var text="\u0418\u0433\u0440: "+visible.Count;
-  if(source!=0)text+=" \u00b7 "+StoreNames[source];
-  if(query.Length>0)text+=" \u00b7 \u041f\u043e\u0438\u0441\u043a: "+query;
-  if(filter!=0)text+=" \u00b7 "+FilterName();
-  if(sort!=1||reverse)text+=" \u00b7 "+SortName();
+  library.EmptyHint=source==4?"Положите ярлык или exe в папку «Свои»: Y → Открыть папку «Свои».":source==2?"Здесь появляются игры, установленные через Epic Games Launcher.":source==3?"Здесь появляются игры, установленные из GOG.":"Измените поиск или фильтр.";
+  library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",others)));
+  var text="Игр: "+visible.Count;
+  if(source!=0)text+=" · "+StoreNames[source];
+  if(query.Length>0)text+=" · Поиск: "+query;
+  if(filter!=0)text+=" · "+FilterName();
+  if(sort!=1||reverse)text+=" · "+SortName();
   chip.Text=text;
   if(tab==1&&library.Current is Game current)OnFocused(current);
  }
@@ -336,8 +346,8 @@ public sealed class MainWindow:Window{
  }
  void ShowDetailState(Game game){
   bool fav=Favorites.Has(game.Id);
-  detailStatus.Text=(game.Installed?"\u0423\u0421\u0422\u0410\u041d\u041e\u0412\u041b\u0415\u041d\u041e":"\u0412 \u041a\u041e\u041b\u041b\u0415\u041a\u0426\u0418\u0418")+" \u00b7 "+game.Store.ToUpperInvariant()+(fav?"   \u2605 \u0418\u0417\u0411\u0420\u0410\u041d\u041d\u041e\u0415":"");
-  detailHint.Text="A / X  "+(game.Installed?"\u0418\u0433\u0440\u0430\u0442\u044c":"\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c")+"        Y  "+(fav?"\u0423\u0431\u0440\u0430\u0442\u044c \u0438\u0437 \u0438\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0433\u043e":"\u0412 \u0438\u0437\u0431\u0440\u0430\u043d\u043d\u043e\u0435")+"        B  \u041d\u0430\u0437\u0430\u0434";
+  detailStatus.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+" · "+game.Store.ToUpperInvariant()+(fav?"   ★ ИЗБРАННОЕ":"");
+  detailHint.Text=Controller.Label("A")+" / "+Controller.Label("X")+"  "+(game.Installed?"Играть":"Установить")+"        "+Controller.Label("Y")+"  "+(fav?"Убрать из избранного":"В избранное")+"        "+Controller.Label("B")+"  Назад";
  }
  void AnimateDetailsIn(){
   var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
@@ -355,8 +365,9 @@ public sealed class MainWindow:Window{
   detailTitle.Text=game.Name;
   detailMeta.Text=steam?"":game.Store;
   detailStats.Text="";
+  detailSync.Text=steam?CloudLog.Describe(CloudLog.Status(game.Id)):"";
   detailDesc.Text="";
-  detailPlay.Text=game.Installed?"\u0418\u0433\u0440\u0430\u0442\u044c":"\u0423\u0441\u0442\u0430\u043d\u043e\u0432\u0438\u0442\u044c";
+  detailPlay.Text=game.Installed?"Играть":"Установить";
   ShowDetailState(game);
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
@@ -369,7 +380,7 @@ public sealed class MainWindow:Window{
   var info=await infoTask;
   if(info!=null&&inDetails&&detailGame==game){
    var parts=new[]{info.Genres,info.Developer,info.Year}.Where(part=>part.Length>0);
-   detailMeta.Text=string.Join(" \u00b7 ",parts);
+   detailMeta.Text=string.Join(" · ",parts);
    detailDesc.Text=info.Description;
   }
  }
@@ -383,25 +394,91 @@ public sealed class MainWindow:Window{
  void Launch(Game? game){
   if(game==null)return;
   Library.RecordPlayed(game.Id);
+  userMinimized=false;
   if(game.Store!="Steam"){
    Stores.Start(game);
+   Topmost=false;
+   if(game.Watch.Length>0){
+    watchDir=game.Watch;
+    dirSeen=false;
+    dirTicks=0;
+    graceUntil=DateTime.Now.AddSeconds(20);
+   }else graceUntil=DateTime.Now.AddHours(6);
    return;
   }
   try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{return;}
+  lastSteamId=game.Id;
+  syncUntil=DateTime.Now.AddSeconds(90);
   if(game.Installed){
+   Topmost=false;
    watchId=game.Id;
    watchSeen=false;
    watchTicks=0;
-   pollTicks=0;
   }
  }
  async void ReturnFromGame(){
+  userMinimized=false;
+  syncUntil=DateTime.Now.AddSeconds(90);
   WindowState=WindowState.Maximized;
   Activate();
   Topmost=true;
-  Topmost=false;
   games=await Library.Load();
   FillShelves();
+ }
+ void WatchFolder(){
+  if(folderBusy||watchDir==null)return;
+  folderBusy=true;
+  var dir=watchDir;
+  Task.Run(()=>Native.AnyUnder(dir)).ContinueWith(task=>Dispatcher.Invoke(()=>{
+   folderBusy=false;
+   if(watchDir==null)return;
+   bool alive=task.Status==TaskStatus.RanToCompletion&&task.Result;
+   if(alive){
+    if(!dirSeen){dirSeen=true;WindowState=WindowState.Minimized;}
+   }else if(dirSeen){
+    watchDir=null;
+    dirSeen=false;
+    ReturnFromGame();
+   }else if(++dirTicks>120)watchDir=null;
+  }));
+ }
+ void SyncTick(){
+  var id=watchId??lastSteamId;
+  if(id!=null&&(watchId!=null||DateTime.Now<syncUntil)){
+   var info=CloudLog.Status(id);
+   if(info==null||info.When==DateTime.MinValue||(DateTime.Now-info.When).TotalMinutes>10)syncToast.Visibility=Visibility.Collapsed;
+   else{
+    syncText.Text="\u2601  "+CloudLog.Describe(info);
+    syncText.Foreground=Ui.B(CloudLog.Tone(info));
+    syncToast.Visibility=Visibility.Visible;
+   }
+  }else if(syncToast.Visibility==Visibility.Visible)syncToast.Visibility=Visibility.Collapsed;
+  if(inDetails&&detailGame!=null&&detailGame.Store=="Steam")detailSync.Text=CloudLog.Describe(CloudLog.Status(detailGame.Id));
+ }
+ void Supervise(){
+  var raw=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0);
+  int running=raw is int value?value:0;
+  if(watchId!=null){
+   if(running.ToString()==watchId){
+    if(!watchSeen){watchSeen=true;WindowState=WindowState.Minimized;}
+   }else if(watchSeen){
+    watchId=null;
+    watchSeen=false;
+    ReturnFromGame();
+   }else if(++watchTicks>90)watchId=null;
+  }
+  if(watchDir!=null)WatchFolder();
+  bool busy=running!=0||watchId!=null||watchDir!=null||DateTime.Now<graceUntil;
+  if(busy){
+   if(Topmost)Topmost=false;
+  }else{
+   if(!Topmost)Topmost=true;
+   if(!userMinimized){
+    if(WindowState==WindowState.Minimized)WindowState=WindowState.Maximized;
+    Native.Raise(this);
+   }
+  }
+  SyncTick();
  }
  void Press(int code){
   PlayFor(code);
@@ -432,7 +509,7 @@ public sealed class MainWindow:Window{
    else if(code==1||code==6)CloseMenu();
    return;
   }
-  if(code==6){menu.Open();Appear(menu,-60,0);UpdateHints();return;}
+  if(code==6){menu.Open();Dim(true);UpdateHints();return;}
   if(inDetails){
    if(code==1)CloseDetails();
    else if(code==0||code==2)Launch(detailGame);
@@ -473,17 +550,16 @@ public sealed class MainWindow:Window{
   clock.Text=DateTime.Now.ToString("HH:mm");
   foreach(var code in pad.Tick(IsActive))Press(code);
   if(pad.ComboHeld()){comboTicks++;if(comboTicks>45)Close();}else comboTicks=0;
-  if(watchId!=null&&++pollTicks>=30){
-   pollTicks=0;
-   var raw=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0);
-   int running=raw is int value?value:0;
-   if(running.ToString()==watchId){
-    if(!watchSeen){watchSeen=true;WindowState=WindowState.Minimized;}
-   }else if(watchSeen){
-    watchId=null;
-    watchSeen=false;
-    ReturnFromGame();
-   }else if(++watchTicks>90)watchId=null;
+  if(++styleTicks>=90){
+   styleTicks=0;
+   if(Controller.Refresh()){
+    UpdateHints();
+    if(inDetails&&detailGame!=null)ShowDetailState(detailGame);
+   }
+  }
+  if(++superviseTicks>=30){
+   superviseTicks=0;
+   Supervise();
   }
  }
 }
