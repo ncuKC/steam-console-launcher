@@ -19,6 +19,7 @@ public sealed class MainWindow:Window{
  readonly WrapPanel hints=new(){VerticalAlignment=VerticalAlignment.Center};
  readonly Gamepad pad=new();
  readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromMilliseconds(33)};
+ readonly SideMenu menu;
  List<Game> games=new();
  int tab,version,comboTicks;
  bool inDetails;
@@ -76,6 +77,8 @@ public sealed class MainWindow:Window{
   Grid.SetRow(hints,2);
   layout.Children.Add(hints);
   BuildDetails(canvas);
+  menu=new SideMenu(CloseMenu,()=>Close());
+  canvas.Children.Add(menu);
   home.Focused+=OnFocused;
   library.Focused+=OnFocused;
   home.Opened+=OpenDetails;
@@ -110,6 +113,15 @@ public sealed class MainWindow:Window{
    hints.Children.Add(group);
   }
  }
+ void UpdateHints(){
+  if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
+  else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Раздел"));
+  else SetHints(("A","Открыть"),("X","Играть"),("≡","Меню"),("LB/RB","Раздел"));
+ }
+ void CloseMenu(){
+  menu.Close();
+  UpdateHints();
+ }
  void SelectTab(int index){
   tab=index;
   for(int i=0;i<3;i++){
@@ -120,8 +132,7 @@ public sealed class MainWindow:Window{
   library.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   store.Visibility=tab==2?Visibility.Visible:Visibility.Collapsed;
   if(Active?.Current is Game current)OnFocused(current);
-  if(tab==2)SetHints(("LB/RB","Раздел"));
-  else SetHints(("A","Открыть"),("X","Играть"),("LB/RB","Раздел"));
+  UpdateHints();
  }
  void FillShelves(){
   var recent=games.Where(item=>item.Installed&&item.LastPlayed>0).OrderByDescending(item=>item.LastPlayed).Take(12).ToList();
@@ -157,6 +168,14 @@ public sealed class MainWindow:Window{
   try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{}
  }
  void Press(int code){
+  if(menu.IsOpen){
+   if(code==11)menu.Move(-1);
+   else if(code==12)menu.Move(1);
+   else if(code==0)menu.Activate();
+   else if(code==1||code==6)CloseMenu();
+   return;
+  }
+  if(code==6){menu.Open();UpdateHints();return;}
   if(inDetails){
    if(code==1)CloseDetails();
    else if(code==0||code==2)Launch(detailGame);
@@ -174,8 +193,14 @@ public sealed class MainWindow:Window{
   }
  }
  void OnKey(object sender,KeyEventArgs e){
-  int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,_=>-1};
-  if(e.Key==Key.Escape){if(inDetails)CloseDetails();else Close();e.Handled=true;return;}
+  int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,Key.Tab=>6,_=>-1};
+  if(e.Key==Key.Escape){
+   if(menu.IsOpen)CloseMenu();
+   else if(inDetails)CloseDetails();
+   else Close();
+   e.Handled=true;
+   return;
+  }
   if(code>=0){Press(code);e.Handled=true;}
  }
  void Tick(){
