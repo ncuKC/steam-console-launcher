@@ -22,7 +22,7 @@ public static class SelfUpdate{
   var timer=new DispatcherTimer{Interval=TimeSpan.FromHours(6)};
   timer.Tick+=async(_,_)=>await Check(window);
   window.Loaded+=async(_,_)=>{
-   if(window.Content is Viewbox box&&box.Child is Grid canvas)canvas.Children.Add(toast);
+   if(window.Content is Grid shell&&shell.Children.Count>0&&shell.Children[0] is Viewbox box&&box.Child is Grid canvas)canvas.Children.Add(toast);
    await Task.Delay(TimeSpan.FromSeconds(60));
    timer.Start();
    await Check(window);

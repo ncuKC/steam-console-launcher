@@ -88,6 +88,7 @@ public sealed class MainWindow:Window{
  readonly SideMenu menu;
  readonly SearchKeyboard keyboard=new();
  readonly ListPopup popup=new();
+ readonly WebPage web=new();
  List<Game> games=new();
  List<Game> libraryOrder=new();
  List<string> letters=new();
@@ -97,7 +98,7 @@ public sealed class MainWindow:Window{
  bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip,returning,detailUpdate;
  string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
- DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now;
+ DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now,noteUntil=DateTime.MinValue;
  Game? detailGame;
  Shelves? Active=>tab==1?library:null;
  static Color Hex(string text)=>(Color)ColorConverter.ConvertFromString(text);
@@ -198,7 +199,12 @@ public sealed class MainWindow:Window{
   FontFamily=new FontFamily("Segoe UI");
   library.FixedRows=true;
   var canvas=new Grid{Width=1920,Height=1080,Background=Ui.B("#0B0F15")};
-  Content=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};
+  var shell=new Grid();
+  shell.Children.Add(new Viewbox{Stretch=Stretch.Uniform,Child=canvas});
+  shell.Children.Add(web);
+  Content=shell;
+  web.Closed+=()=>{lastInput=DateTime.Now;UpdateHints();};
+  web.Failed+=message=>{syncText.Text="Не удалось открыть страницу: "+message;syncText.Foreground=Brushes.White;syncToast.Visibility=Visibility.Visible;noteUntil=DateTime.Now.AddSeconds(8);};
   canvas.Children.Add(scene);
   canvas.Children.Add(backdrop);
   canvas.Children.Add(backdropFront);
@@ -482,7 +488,7 @@ public sealed class MainWindow:Window{
   else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
   else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
   else if(inDetails){
-   if(detailUpdate)SetHints(("A","Играть"),("X","Обновить"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
+   if(detailGame!=null&&detailGame.Store=="Steam")SetHints(("A","Играть"),("X",detailUpdate?"Обновить":"Страница"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
    else SetHints(("A","Играть"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
   }
   else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Вкладка"));
@@ -551,6 +557,10 @@ public sealed class MainWindow:Window{
  void UpdateGame(Game game){
   SteamLink("install",game.Id);
  }
+ void OpenPage(Game game){
+  if(game.Store!="Steam")return;
+  web.Open("https://store.steampowered.com/app/"+game.Id+"/?l=russian");
+ }
  void OpenActions(Game game){
   armedUninstall=null;
   var items=new List<(Func<string>,Action<int>,string)>();
@@ -559,6 +569,12 @@ public sealed class MainWindow:Window{
     UpdateGame(game);
     popup.Close();
    },"\ue896"));
+  }
+  if(game.Store=="Steam"){
+   items.Add(Item(()=>"Страница игры в Steam",_=>{
+    popup.Close();
+    OpenPage(game);
+   },"\ue774"));
   }
   items.Add(Item(()=>Favorites.Has(game.Id)?"Убрать из избранного":"В избранное",_=>{
    Favorites.Toggle(game.Id);
@@ -688,8 +704,8 @@ public sealed class MainWindow:Window{
   favChip.Visibility=fav?Visibility.Visible:Visibility.Collapsed;
   detailPlay.Text=game.Installed?"Играть":"Установить";
   detailFavLabel.Text="Действия";
-  detailXLabel.Text="Обновить игру";
-  if(xButton!=null)xButton.Visibility=detailUpdate?Visibility.Visible:Visibility.Collapsed;
+  detailXLabel.Text=detailUpdate?"Обновить игру":"Страница игры";
+  if(xButton!=null)xButton.Visibility=game.Store=="Steam"?Visibility.Visible:Visibility.Collapsed;
   badgeA.Text.Text=Controller.Label("A");
   badgeA.Box.BorderBrush=Controller.Tint("A");
   badgeX.Text.Text=Controller.Label("X");
@@ -941,7 +957,7 @@ public sealed class MainWindow:Window{
     syncText.Foreground=Ui.B(CloudLog.Tone(info));
     syncToast.Visibility=Visibility.Visible;
    }
-  }else if(syncToast.Visibility==Visibility.Visible)syncToast.Visibility=Visibility.Collapsed;
+  }else if(syncToast.Visibility==Visibility.Visible&&DateTime.Now>noteUntil)syncToast.Visibility=Visibility.Collapsed;
   if(inDetails&&detailGame!=null&&detailGame.Store=="Steam"){
    var current=CloudLog.Status(detailGame.Id);
    detailSync.Text=CloudLog.Describe(current);
@@ -972,7 +988,7 @@ public sealed class MainWindow:Window{
    if(!userMinimized){
     if(WindowState==WindowState.Minimized)WindowState=WindowState.Maximized;
     Native.Raise(this);
-    if(!saver&&!splashing&&(DateTime.Now-lastInput).TotalMinutes>=5)StartSaver();
+    if(!saver&&!splashing&&!web.IsOpen&&(DateTime.Now-lastInput).TotalMinutes>=5)StartSaver();
    }
   }
   SyncTick();
@@ -981,6 +997,7 @@ public sealed class MainWindow:Window{
   lastInput=DateTime.Now;
   if(saver){StopSaver();return;}
   PlayFor(code);
+  if(web.IsOpen){web.Press(code);return;}
   if(keyboard.IsOpen){
    if(code==11)keyboard.Move(0,-1);
    else if(code==12)keyboard.Move(0,1);
@@ -1012,7 +1029,12 @@ public sealed class MainWindow:Window{
   if(inDetails){
    if(code==1)CloseDetails();
    else if(code==0)Launch(detailGame);
-   else if(code==2){if(detailUpdate&&detailGame!=null)UpdateGame(detailGame);}
+   else if(code==2){
+    if(detailGame!=null&&detailGame.Store=="Steam"){
+     if(detailUpdate)UpdateGame(detailGame);
+     else OpenPage(detailGame);
+    }
+   }
    else if(code==3&&detailGame!=null)OpenActions(detailGame);
    else if(code==9)MoveShot(-1);
    else if(code==10)MoveShot(1);
@@ -1037,7 +1059,8 @@ public sealed class MainWindow:Window{
   if(saver){StopSaver();e.Handled=true;return;}
   int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,Key.Tab=>6,Key.F=>3,_=>-1};
   if(e.Key==Key.Escape){
-   if(keyboard.IsOpen)keyboard.Close();
+   if(web.IsOpen)web.Close();
+   else if(keyboard.IsOpen)keyboard.Close();
    else if(popup.IsOpen)popup.Close();
    else if(menu.IsOpen)CloseMenu();
    else if(inDetails)CloseDetails();
