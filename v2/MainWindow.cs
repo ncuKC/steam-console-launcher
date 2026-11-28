@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
+using Shapes=System.Windows.Shapes;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
  static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
@@ -18,6 +19,23 @@ public sealed class MainWindow:Window{
  readonly Border syncToast=new(){Background=Ui.B("#E61B2838"),CornerRadius=new CornerRadius(12),Padding=new Thickness(20,12,20,12),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,76,40,0),Visibility=Visibility.Collapsed};
  readonly TextBlock syncText=new(){FontSize=20,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly DispatcherTimer slideTimer=new(){Interval=TimeSpan.FromSeconds(9)};
+ readonly Grid splash=new(){Background=Ui.B("#06090E")};
+ readonly ScaleTransform splashGlow=new(.85,.85);
+ readonly ScaleTransform splashLogo=new(.7,.7);
+ readonly TranslateTransform splashTitle=new(0,24);
+ readonly TranslateTransform splashBar=new(-150,0);
+ Shapes.Ellipse? glowEl;
+ Viewbox? logoEl;
+ TextBlock? titleEl,subEl;
+ readonly Grid saverRoot=new(){Background=Brushes.Black,Visibility=Visibility.Collapsed,Opacity=0,IsHitTestVisible=false};
+ readonly Image saverA=new(){Stretch=Stretch.UniformToFill,Opacity=0};
+ readonly Image saverB=new(){Stretch=Stretch.UniformToFill,Opacity=0};
+ readonly ScaleTransform scaleA=new(1,1);
+ readonly ScaleTransform scaleB=new(1,1);
+ readonly TranslateTransform moveA=new();
+ readonly TranslateTransform moveB=new();
+ readonly TextBlock saverTitle=new(){FontSize=34,Foreground=Brushes.White,Opacity=.85,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(80,0,0,70)};
+ readonly TextBlock saverClock=new(){FontSize=84,FontWeight=FontWeights.Light,Foreground=Brushes.White,Opacity=.9,HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(0,0,80,50)};
  readonly Sections sections=new();
  readonly Shelves library=new();
  readonly Grid store=new(){Visibility=Visibility.Collapsed};
@@ -46,11 +64,11 @@ public sealed class MainWindow:Window{
  List<string> letters=new();
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
- int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks;
- bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy;
+ int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken;
+ bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip;
  string? watchId,watchDir,lastSteamId;
  string query="";
- DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue;
+ DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now;
  Game? detailGame;
  Shelves? Active=>tab==1?library:null;
  static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
@@ -60,6 +78,12 @@ public sealed class MainWindow:Window{
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
+ static TransformGroup Pair(ScaleTransform scale,TranslateTransform move){
+  var group=new TransformGroup();
+  group.Children.Add(scale);
+  group.Children.Add(move);
+  return group;
+ }
  static void Appear(UIElement element,double dx,double dy){
   var move=new TranslateTransform(dx,dy);
   element.RenderTransform=move;
@@ -86,6 +110,19 @@ public sealed class MainWindow:Window{
    _=>"облако: "+info.Cloud
   };
   return "Время в игре: "+time+"   ·   \u2601 "+cloud;
+ }
+ static UIElement ControllerLogo(){
+  var canvas=new Canvas{Width=200,Height=140};
+  canvas.Children.Add(new Shapes.Path{Data=Geometry.Parse("M52,18 L148,18 Q176,18 186,62 Q194,100 178,118 Q160,132 144,108 L132,92 L68,92 L56,108 Q40,132 22,118 Q6,100 14,62 Q24,18 52,18 Z"),Stroke=Brushes.White,StrokeThickness=7,StrokeLineJoin=PenLineJoin.Round,Fill=new SolidColorBrush(Color.FromArgb(0x22,255,255,255))});
+  canvas.Children.Add(new Shapes.Line{X1=52,Y1=46,X2=52,Y2=74,Stroke=Brushes.White,StrokeThickness=7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round});
+  canvas.Children.Add(new Shapes.Line{X1=38,Y1=60,X2=66,Y2=60,Stroke=Brushes.White,StrokeThickness=7,StrokeStartLineCap=PenLineCap.Round,StrokeEndLineCap=PenLineCap.Round});
+  foreach(var (x,y) in new[]{(140.0,40.0),(154.0,54.0),(140.0,68.0),(126.0,54.0)}){
+   var dot=new Shapes.Ellipse{Width=12,Height=12,Fill=Brushes.White};
+   Canvas.SetLeft(dot,x);
+   Canvas.SetTop(dot,y);
+   canvas.Children.Add(dot);
+  }
+  return canvas;
  }
  public MainWindow(){
   Sound.Load();
@@ -142,22 +179,146 @@ public sealed class MainWindow:Window{
   canvas.Children.Add(popup);
   menu=new SideMenu(CloseMenu,()=>Close(),MinimizeLauncher);
   canvas.Children.Add(menu);
+  BuildSaver(canvas);
+  BuildSplash(canvas);
   sections.StoreFocused+=ShowScene;
   sections.Opened+=index=>{if(index>=0&&index<sectionIds.Count)OpenSection(sectionIds[index]);};
   library.Focused+=OnFocused;
   library.Opened+=OpenDetails;
   PreviewKeyDown+=OnKey;
+  MouseMove+=(_,_)=>{lastInput=DateTime.Now;if(saver)StopSaver();};
   slideTimer.Tick+=(_,_)=>NextSlide();
   StateChanged+=(_,_)=>{if(WindowState!=WindowState.Minimized)userMinimized=false;};
   Activated+=(_,_)=>{if(watchDir==null&&watchId==null)graceUntil=DateTime.MinValue;};
   Loaded+=async(_,_)=>{
+   var started=DateTime.Now;
+   StartSplash();
    timer.Tick+=(_,_)=>Tick();
    timer.Start();
    SelectTab(0);
    games=await Library.Load();
    FillShelves();
+   int wait=3000-(int)(DateTime.Now-started).TotalMilliseconds;
+   if(wait>0)await Task.Delay(wait);
+   EndSplash();
   };
   Closed+=(_,_)=>{timer.Stop();slideTimer.Stop();pad.Dispose();};
+ }
+ void BuildSplash(Grid canvas){
+  glowEl=new Shapes.Ellipse{Width=1200,Height=1200,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Fill=new RadialGradientBrush(Color.FromArgb(0x66,0x66,0xC0,0xF4),Colors.Transparent),Opacity=0,RenderTransformOrigin=new Point(.5,.5),RenderTransform=splashGlow};
+  logoEl=new Viewbox{Width=320,Height=224,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,-150,0,0),Child=ControllerLogo(),Opacity=0,RenderTransformOrigin=new Point(.5,.5),RenderTransform=splashLogo};
+  titleEl=new TextBlock{Text="P L A Y",FontSize=110,FontWeight=FontWeights.Light,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,150,0,0),Opacity=0,RenderTransform=splashTitle};
+  subEl=new TextBlock{Text="Загрузка библиотеки…",FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,300,0,0),Opacity=0};
+  var track=new Border{Width=420,Height=4,CornerRadius=new CornerRadius(2),Background=Ui.B("#22FFFFFF"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,370,0,0),ClipToBounds=true};
+  track.Child=new Border{Width=150,Height=4,CornerRadius=new CornerRadius(2),Background=Ui.B("#66C0F4"),HorizontalAlignment=HorizontalAlignment.Left,RenderTransform=splashBar};
+  splash.Children.Add(glowEl);
+  splash.Children.Add(logoEl);
+  splash.Children.Add(titleEl);
+  splash.Children.Add(subEl);
+  splash.Children.Add(track);
+  canvas.Children.Add(splash);
+ }
+ void StartSplash(){
+  var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
+  var back=new BackEase{EasingMode=EasingMode.EaseOut,Amplitude=.4};
+  var sine=new SineEase{EasingMode=EasingMode.EaseInOut};
+  glowEl!.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(1400)));
+  var pulse=new DoubleAnimation(.85,1.08,TimeSpan.FromSeconds(3.2)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever,EasingFunction=sine};
+  splashGlow.BeginAnimation(ScaleTransform.ScaleXProperty,pulse);
+  splashGlow.BeginAnimation(ScaleTransform.ScaleYProperty,pulse);
+  logoEl!.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)));
+  var pop=new DoubleAnimation(.7,1,TimeSpan.FromMilliseconds(900)){EasingFunction=back};
+  splashLogo.BeginAnimation(ScaleTransform.ScaleXProperty,pop);
+  splashLogo.BeginAnimation(ScaleTransform.ScaleYProperty,pop);
+  var delay=TimeSpan.FromMilliseconds(450);
+  titleEl!.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)){BeginTime=delay});
+  splashTitle.BeginAnimation(TranslateTransform.YProperty,new DoubleAnimation(24,0,TimeSpan.FromMilliseconds(800)){BeginTime=delay,EasingFunction=ease});
+  subEl!.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)){BeginTime=TimeSpan.FromMilliseconds(900)});
+  splashBar.BeginAnimation(TranslateTransform.XProperty,new DoubleAnimation(-150,420,TimeSpan.FromMilliseconds(1300)){RepeatBehavior=RepeatBehavior.Forever,EasingFunction=sine});
+  Sound.Play("open");
+ }
+ void EndSplash(){
+  splashing=false;
+  lastInput=DateTime.Now;
+  var fade=new DoubleAnimation(1,0,TimeSpan.FromMilliseconds(800));
+  fade.Completed+=(_,_)=>splash.Visibility=Visibility.Collapsed;
+  splash.BeginAnimation(UIElement.OpacityProperty,fade);
+  if(Content is UIElement root){
+   var zoom=new ScaleTransform(1.06,1.06);
+   root.RenderTransformOrigin=new Point(.5,.5);
+   root.RenderTransform=zoom;
+   var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
+   zoom.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.06,1,TimeSpan.FromMilliseconds(1000)){EasingFunction=ease});
+   zoom.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.06,1,TimeSpan.FromMilliseconds(1000)){EasingFunction=ease});
+  }
+ }
+ void BuildSaver(Grid canvas){
+  saverA.RenderTransformOrigin=new Point(.5,.5);
+  saverA.RenderTransform=Pair(scaleA,moveA);
+  saverB.RenderTransformOrigin=new Point(.5,.5);
+  saverB.RenderTransform=Pair(scaleB,moveB);
+  saverRoot.Children.Add(saverA);
+  saverRoot.Children.Add(saverB);
+  var shade=new Border{Background=Ui.Gradient(new Point(0,0),new Point(0,1),0,230),Height=420,VerticalAlignment=VerticalAlignment.Bottom,IsHitTestVisible=false};
+  Panel.SetZIndex(shade,5);
+  Panel.SetZIndex(saverTitle,6);
+  Panel.SetZIndex(saverClock,6);
+  saverRoot.Children.Add(shade);
+  saverRoot.Children.Add(saverTitle);
+  saverRoot.Children.Add(saverClock);
+  canvas.Children.Add(saverRoot);
+ }
+ void StartSaver(){
+  if(saver)return;
+  saver=true;
+  int token=++saverToken;
+  saverRoot.Visibility=Visibility.Visible;
+  saverRoot.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(1200)));
+  RunSaver(token);
+ }
+ void StopSaver(){
+  if(!saver)return;
+  saver=false;
+  int token=++saverToken;
+  var fade=new DoubleAnimation(saverRoot.Opacity,0,TimeSpan.FromMilliseconds(300));
+  fade.Completed+=(_,_)=>{if(token==saverToken)saverRoot.Visibility=Visibility.Collapsed;};
+  saverRoot.BeginAnimation(UIElement.OpacityProperty,fade);
+ }
+ async void RunSaver(int token){
+  var random=new Random();
+  while(saver&&token==saverToken){
+   var pool=games.ToList();
+   if(pool.Count==0){await Task.Delay(2000);continue;}
+   var game=pool[random.Next(pool.Count)];
+   ImageSource? image=null;
+   if(random.Next(2)==0){
+    var arts=await Art.Arts(game.Id);
+    if(arts.Count>0)image=arts[random.Next(arts.Count)];
+   }
+   image??=await Art.Hero(game.Id);
+   if(!saver||token!=saverToken)return;
+   if(image==null){await Task.Delay(250);continue;}
+   ShowSaverSlide(image,game.Name,random);
+   await Task.Delay(13000);
+  }
+ }
+ void ShowSaverSlide(ImageSource image,string name,Random random){
+  saverFlip=!saverFlip;
+  var front=saverFlip?saverB:saverA;
+  var back=saverFlip?saverA:saverB;
+  var scale=saverFlip?scaleB:scaleA;
+  var move=saverFlip?moveB:moveA;
+  front.Source=image;
+  Panel.SetZIndex(front,2);
+  Panel.SetZIndex(back,1);
+  var span=TimeSpan.FromSeconds(16);
+  scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.03,1.18,span));
+  scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.03,1.18,span));
+  move.BeginAnimation(TranslateTransform.XProperty,new DoubleAnimation(0,(random.NextDouble()-.5)*120,span));
+  move.BeginAnimation(TranslateTransform.YProperty,new DoubleAnimation(0,(random.NextDouble()-.5)*70,span));
+  front.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(1500)));
+  back.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(1,0,TimeSpan.FromMilliseconds(1500)){BeginTime=TimeSpan.FromMilliseconds(1500)});
+  saverTitle.Text=name;
  }
  void BuildDetails(Grid canvas){
   details.Children.Add(detailArt);
@@ -329,6 +490,7 @@ public sealed class MainWindow:Window{
   Crossfade(slides[slideIndex],version);
  }
  async void OnFocused(Game game){
+  if(tab!=1)return;
   int mine=++version;
   slideTimer.Stop();
   slides=new List<ImageSource>();
@@ -418,6 +580,7 @@ public sealed class MainWindow:Window{
  }
  async void ReturnFromGame(){
   userMinimized=false;
+  lastInput=DateTime.Now;
   syncUntil=DateTime.Now.AddSeconds(90);
   WindowState=WindowState.Maximized;
   Activate();
@@ -471,16 +634,20 @@ public sealed class MainWindow:Window{
   bool busy=running!=0||watchId!=null||watchDir!=null||DateTime.Now<graceUntil;
   if(busy){
    if(Topmost)Topmost=false;
+   if(saver)StopSaver();
   }else{
    if(!Topmost)Topmost=true;
    if(!userMinimized){
     if(WindowState==WindowState.Minimized)WindowState=WindowState.Maximized;
     Native.Raise(this);
+    if(!saver&&!splashing&&(DateTime.Now-lastInput).TotalMinutes>=5)StartSaver();
    }
   }
   SyncTick();
  }
  void Press(int code){
+  lastInput=DateTime.Now;
+  if(saver){StopSaver();return;}
   PlayFor(code);
   if(keyboard.IsOpen){
    if(code==11)keyboard.Move(0,-1);
@@ -534,6 +701,9 @@ public sealed class MainWindow:Window{
   }
  }
  void OnKey(object sender,KeyEventArgs e){
+  if(splashing){e.Handled=true;return;}
+  lastInput=DateTime.Now;
+  if(saver){StopSaver();e.Handled=true;return;}
   int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,Key.Tab=>6,Key.F=>3,_=>-1};
   if(e.Key==Key.Escape){
    if(keyboard.IsOpen)keyboard.Close();
@@ -548,7 +718,10 @@ public sealed class MainWindow:Window{
  }
  void Tick(){
   clock.Text=DateTime.Now.ToString("HH:mm");
-  foreach(var code in pad.Tick(IsActive))Press(code);
+  if(saver)saverClock.Text=clock.Text;
+  foreach(var code in pad.Tick(IsActive)){
+   if(!splashing)Press(code);
+  }
   if(pad.ComboHeld()){comboTicks++;if(comboTicks>45)Close();}else comboTicks=0;
   if(++styleTicks>=90){
    styleTicks=0;

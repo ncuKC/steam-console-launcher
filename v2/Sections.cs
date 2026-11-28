@@ -7,14 +7,15 @@ using Shapes=System.Windows.Shapes;
 namespace ConsoleLauncher;
 public sealed class Sections:Grid{
  static Color Hex(string text)=>(Color)ColorConverter.ConvertFromString(text);
+ static (string,string,string) Palette(string name)=>name switch{
+  "Steam"=>("#16202D","#2F6A93","#66C0F4"),
+  "Epic Games"=>("#121215","#3C3C48","#9AA0C8"),
+  "GOG"=>("#3E1650","#8A3A96","#E08BF0"),
+  "Свои"=>("#0F2B28","#2C7A6E","#4FE3C1"),
+  _=>("#1A2432","#3B5878","#7FB2E5")
+ };
  static Brush Back(string name){
-  var (from,to)=name switch{
-   "Steam"=>("#16202D","#2F6A93"),
-   "Epic Games"=>("#121215","#3C3C48"),
-   "GOG"=>("#3E1650","#8A3A96"),
-   "Свои"=>("#0F2B28","#2C7A6E"),
-   _=>("#1A2432","#3B5878")
-  };
+  var (from,to,_)=Palette(name);
   return new LinearGradientBrush(Hex(from),Hex(to),45);
  }
  static T At<T>(T item,double x,double y) where T:UIElement{
@@ -58,10 +59,58 @@ public sealed class Sections:Grid{
   return canvas;
  }
  static UIElement Emblem(string name)=>new Viewbox{Width=84,Height=84,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,14,0,0),Child=Drawing(name)};
+ static Shapes.Ellipse Blob(Color color,double size,double x,double y,double dx,double dy,double secondsX,double secondsY){
+  var move=new TranslateTransform();
+  var blob=new Shapes.Ellipse{Width=size,Height=size,Fill=new RadialGradientBrush(Color.FromArgb(0x80,color.R,color.G,color.B),Colors.Transparent),RenderTransform=move,IsHitTestVisible=false};
+  Canvas.SetLeft(blob,x);
+  Canvas.SetTop(blob,y);
+  var ease=new SineEase{EasingMode=EasingMode.EaseInOut};
+  move.BeginAnimation(TranslateTransform.XProperty,new DoubleAnimation(-dx,dx,TimeSpan.FromSeconds(secondsX)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever,EasingFunction=ease});
+  move.BeginAnimation(TranslateTransform.YProperty,new DoubleAnimation(-dy,dy,TimeSpan.FromSeconds(secondsY)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever,EasingFunction=ease});
+  return blob;
+ }
+ static Shapes.Ellipse Dot(Random random){
+  double size=2+random.NextDouble()*5;
+  double seconds=16+random.NextDouble()*18;
+  var dot=new Shapes.Ellipse{Width=size,Height=size,Fill=Brushes.White,Opacity=0,IsHitTestVisible=false};
+  Canvas.SetLeft(dot,random.NextDouble()*1920);
+  var begin=TimeSpan.FromSeconds(-random.NextDouble()*seconds);
+  dot.BeginAnimation(Canvas.TopProperty,new DoubleAnimation(1100,-30,TimeSpan.FromSeconds(seconds)){RepeatBehavior=RepeatBehavior.Forever,BeginTime=begin});
+  var fade=new DoubleAnimationUsingKeyFrames{Duration=TimeSpan.FromSeconds(seconds),RepeatBehavior=RepeatBehavior.Forever,BeginTime=begin};
+  fade.KeyFrames.Add(new LinearDoubleKeyFrame(0,KeyTime.FromPercent(0)));
+  fade.KeyFrames.Add(new LinearDoubleKeyFrame(.5,KeyTime.FromPercent(.2)));
+  fade.KeyFrames.Add(new LinearDoubleKeyFrame(.5,KeyTime.FromPercent(.8)));
+  fade.KeyFrames.Add(new LinearDoubleKeyFrame(0,KeyTime.FromPercent(1)));
+  dot.BeginAnimation(UIElement.OpacityProperty,fade);
+  return dot;
+ }
  public static UIElement Scene(string name){
-  var grid=new Grid{Background=Back(name)};
-  grid.Children.Add(new Shapes.Ellipse{Width=1400,Height=1400,HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,-420,0),Fill=new RadialGradientBrush(Hex("#44FFFFFF"),Colors.Transparent)});
-  grid.Children.Add(new Viewbox{Width=860,Height=860,HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,170,60),Opacity=.18,Child=Drawing(name)});
+  var (_,to,accent)=Palette(name);
+  var tone=Hex(accent);
+  var deep=Hex(to);
+  var random=new Random(name.Sum(ch=>(int)ch));
+  var grid=new Grid{Background=Back(name),ClipToBounds=true};
+  var canvas=new Canvas{Width=1920,Height=1080,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top,IsHitTestVisible=false};
+  canvas.Children.Add(Blob(tone,1300,-300,-250,260,160,19,23));
+  canvas.Children.Add(Blob(deep,1500,700,150,300,120,23,17));
+  canvas.Children.Add(Blob(tone,900,1100,-100,180,220,17,21));
+  canvas.Children.Add(Blob(deep,1100,200,500,220,160,21,25));
+  var scale=new ScaleTransform(1,1);
+  var tilt=new RotateTransform(0);
+  var group=new TransformGroup();
+  group.Children.Add(scale);
+  group.Children.Add(tilt);
+  var mark=new Viewbox{Width=860,Height=860,Opacity=.2,Child=Drawing(name),RenderTransformOrigin=new Point(.5,.5),RenderTransform=group};
+  Canvas.SetLeft(mark,1000);
+  Canvas.SetTop(mark,110);
+  var ease=new SineEase{EasingMode=EasingMode.EaseInOut};
+  var breathe=new DoubleAnimation(1,1.06,TimeSpan.FromSeconds(6)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever,EasingFunction=ease};
+  scale.BeginAnimation(ScaleTransform.ScaleXProperty,breathe);
+  scale.BeginAnimation(ScaleTransform.ScaleYProperty,breathe);
+  tilt.BeginAnimation(RotateTransform.AngleProperty,new DoubleAnimation(-3,3,TimeSpan.FromSeconds(9)){AutoReverse=true,RepeatBehavior=RepeatBehavior.Forever,EasingFunction=ease});
+  canvas.Children.Add(mark);
+  for(int i=0;i<24;i++)canvas.Children.Add(Dot(random));
+  grid.Children.Add(canvas);
   return grid;
  }
  sealed class Card:Border{
