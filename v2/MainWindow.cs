@@ -18,6 +18,7 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailStatus=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,0,0,10)};
  readonly TextBlock detailPlay=new(){FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly TextBlock detailMeta=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),Margin=new Thickness(0,14,0,0)};
+ readonly TextBlock detailStats=new(){FontSize=24,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,10,0,0)};
  readonly TextBlock detailDesc=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxWidth=900,MaxHeight=150,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,18,0,0)};
  readonly TextBlock detailHint=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(120,0,0,50)};
  readonly TextBlock chip=new(){FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,14,44,0),Visibility=Visibility.Collapsed};
@@ -47,6 +48,19 @@ public sealed class MainWindow:Window{
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
+ static string Describe(PlayInfo? info){
+  if(info==null)return "Время в игре: нет данных";
+  int minutes=info.Minutes;
+  var time=minutes<=0?"ещё не играли":minutes<60?minutes+" мин":(minutes/60)+" ч "+(minutes%60)+" мин";
+  var cloud=info.Cloud switch{
+   "synchronized"=>"сохранения синхронизированы",
+   "conflict"=>"конфликт сохранений",
+   ""=>"облако: нет данных",
+   "uploading" or "downloading" or "inprogress"=>"идёт синхронизация",
+   _=>"облако: "+info.Cloud
+  };
+  return "Время в игре: "+time+"   ·   \u2601 "+cloud;
+ }
  public MainWindow(){
   Title="PLAY";
   WindowStyle=WindowStyle.None;
@@ -125,6 +139,7 @@ public sealed class MainWindow:Window{
   panel.Children.Add(detailStatus);
   panel.Children.Add(detailTitle);
   panel.Children.Add(detailMeta);
+  panel.Children.Add(detailStats);
   panel.Children.Add(detailDesc);
   panel.Children.Add(new Border{Background=Ui.B("#5BA32B"),CornerRadius=new CornerRadius(6),Padding=new Thickness(48,16,48,16),Margin=new Thickness(0,36,0,0),HorizontalAlignment=HorizontalAlignment.Left,Child=detailPlay});
   details.Children.Add(panel);
@@ -255,13 +270,17 @@ public sealed class MainWindow:Window{
   detailGame=game;
   detailTitle.Text=game.Name;
   detailMeta.Text="";
+  detailStats.Text="";
   detailDesc.Text="";
   detailPlay.Text=game.Installed?"Играть":"Установить";
   ShowDetailState(game);
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
   var infoTask=Details.Get(game.Id);
+  var statsTask=Stats.Get(game.Id);
   detailArt.Source=await Art.Hero(game.Id);
+  var stats=await statsTask;
+  if(inDetails&&detailGame==game)detailStats.Text=Describe(stats);
   var info=await infoTask;
   if(info!=null&&inDetails&&detailGame==game){
    var parts=new[]{info.Genres,info.Developer,info.Year}.Where(part=>part.Length>0);
