@@ -1,11 +1,14 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed record LocalInfo(string Size,string State,string Tone);
+public sealed record ReviewInfo(string Text,string Detail,string Tone,DateTime When);
 public static class Extra{
  static readonly HttpClient Web=new(){Timeout=TimeSpan.FromSeconds(12)};
  static readonly ConcurrentDictionary<string,string> Support=new();
+ static readonly ConcurrentDictionary<string,ReviewInfo> ReviewMemory=new();
  static Extra(){
   Web.DefaultRequestHeaders.UserAgent.ParseAdd("SteamConsoleLauncher/1.0");
  }
@@ -40,6 +43,55 @@ public static class Extra{
    }catch{}
    return result;
   }catch{return "";}
+ }
+ static string Russian(string text)=>text switch{
+  "Overwhelmingly Positive"=>"Крайне положительные",
+  "Very Positive"=>"Очень положительные",
+  "Positive"=>"Положительные",
+  "Mostly Positive"=>"В основном положительные",
+  "Mixed"=>"Смешанные",
+  "Mostly Negative"=>"В основном отрицательные",
+  "Negative"=>"Отрицательные",
+  "Very Negative"=>"Очень отрицательные",
+  "Overwhelmingly Negative"=>"Крайне отрицательные",
+  _=>text
+ };
+ static long Long(JsonElement item,string name)=>item.TryGetProperty(name,out var value)&&value.ValueKind==JsonValueKind.Number?value.GetInt64():0;
+ public static async Task<ReviewInfo?> Reviews(string id){
+  if(ReviewMemory.TryGetValue(id,out var known))return known;
+  var file=Path.Combine(Library.Root,"reviews",id+".json");
+  try{
+   if(File.Exists(file)){
+    var saved=JsonSerializer.Deserialize<ReviewInfo>(await File.ReadAllTextAsync(file));
+    if(saved!=null&&(DateTime.Now-saved.When).TotalDays<3){
+     ReviewMemory[id]=saved;
+     return saved;
+    }
+   }
+  }catch{}
+  try{
+   var json=await Web.GetStringAsync("https://api.steampowered.com/IUserReviewsService/GetAppReviews/v1/?appid="+id+"&filter=1&languages[0]=all&purchase_type=1&num_per_page=1");
+   using var doc=JsonDocument.Parse(json);
+   if(!doc.RootElement.TryGetProperty("response",out var response)||!response.TryGetProperty("query_summary",out var summary))return null;
+   long positive=Long(summary,"total_positive");
+   long negative=Long(summary,"total_negative");
+   long total=positive+negative;
+   string desc=summary.TryGetProperty("review_score_desc",out var descValue)?descValue.GetString()??"":"";
+   ReviewInfo info;
+   if(total==0)info=new ReviewInfo("Нет отзывов","","#C6D4DF",DateTime.Now);
+   else{
+    int percent=(int)Math.Round(positive*100.0/total);
+    string tone=percent>=70?"#C8F59B":percent>=40?"#FFB347":"#FF7A7A";
+    string text=total<10?"Мало отзывов":Russian(desc);
+    info=new ReviewInfo(text,percent+"% положительных · "+total.ToString("N0",CultureInfo.GetCultureInfo("ru-RU")),tone,DateTime.Now);
+   }
+   ReviewMemory[id]=info;
+   try{
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    await File.WriteAllTextAsync(file,JsonSerializer.Serialize(info));
+   }catch{}
+   return info;
+  }catch{return null;}
  }
  static string SteamPath()=>Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","SteamPath",null) as string??Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),"Steam");
  static string? Manifest(string id){
