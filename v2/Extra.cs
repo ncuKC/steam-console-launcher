@@ -6,6 +6,7 @@ using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed record LocalInfo(string Size,string State,string Tone);
 public sealed record ReviewInfo(string Text,string Detail,string Tone,DateTime When);
+public sealed record NewsInfo(string Title,long Date,DateTime When);
 public static class Extra{
  static readonly HttpClient Web=new(){Timeout=TimeSpan.FromSeconds(12)};
  static readonly SemaphoreSlim ShotGate=new(3);
@@ -99,6 +100,30 @@ public static class Extra{
    });
   }catch{return null;}
   finally{ShotGate.Release();}
+ }
+ public static async Task<NewsInfo?> News(string id){
+  var file=Path.Combine(Library.Root,"news",id+".json");
+  try{
+   if(File.Exists(file)){
+    var saved=JsonSerializer.Deserialize<NewsInfo>(await File.ReadAllTextAsync(file));
+    if(saved!=null&&(DateTime.Now-saved.When).TotalHours<6)return saved;
+   }
+  }catch{}
+  try{
+   var json=await Web.GetStringAsync("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/?appid="+id+"&count=1&maxlength=1&feeds=steam_community_announcements");
+   using var doc=JsonDocument.Parse(json);
+   var info=new NewsInfo("",0,DateTime.Now);
+   if(doc.RootElement.TryGetProperty("appnews",out var news)&&news.TryGetProperty("newsitems",out var items)&&items.ValueKind==JsonValueKind.Array&&items.GetArrayLength()>0){
+    var item=items[0];
+    string title=item.TryGetProperty("title",out var titleValue)?titleValue.GetString()??"":"";
+    info=new NewsInfo(title.Trim(),Long(item,"date"),DateTime.Now);
+   }
+   try{
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    await File.WriteAllTextAsync(file,JsonSerializer.Serialize(info));
+   }catch{}
+   return info;
+  }catch{return null;}
  }
  static string Russian(string text)=>text switch{
   "Overwhelmingly Positive"=>"Крайне положительные",

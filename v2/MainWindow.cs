@@ -58,6 +58,7 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailTitle=new(){FontSize=64,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,18,0,0)};
  readonly TextBlock detailMeta=new(){FontSize=22,Foreground=Ui.B("#9FB3C8"),Margin=new Thickness(0,6,0,0),Visibility=Visibility.Collapsed};
  readonly TextBlock detailReviews=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,Margin=new Thickness(0,8,0,0),Visibility=Visibility.Collapsed};
+ readonly TextBlock detailNews=new(){FontSize=20,Foreground=Ui.B("#9FB3C8"),TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,6,0,0),Visibility=Visibility.Collapsed};
  readonly Grid detailTiles=new(){Margin=new Thickness(0,24,0,0)};
  readonly Grid detailTiles2=new(){Margin=new Thickness(0,12,0,0)};
  readonly TextBlock detailStats=new(){FontSize=26,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
@@ -404,6 +405,7 @@ public sealed class MainWindow:Window{
   detailBody.Children.Add(detailTitle);
   detailBody.Children.Add(detailMeta);
   detailBody.Children.Add(detailReviews);
+  detailBody.Children.Add(detailNews);
   detailTiles.ColumnDefinitions.Add(new ColumnDefinition());
   detailTiles.ColumnDefinitions.Add(new ColumnDefinition());
   var timeTile=Tile("ВРЕМЯ В ИГРЕ",detailStats,new Thickness(0,0,8,0));
@@ -697,6 +699,12 @@ public sealed class MainWindow:Window{
   detailReviews.Foreground=Ui.B(info.Tone);
   detailReviews.Visibility=Visibility.Visible;
  }
+ async void LoadNews(Game game){
+  var info=await Extra.News(game.Id);
+  if(info==null||info.Title.Length==0||!inDetails||detailGame!=game)return;
+  detailNews.Text="Новость · "+LastPlayedText(info.Date)+" · "+info.Title;
+  detailNews.Visibility=Visibility.Visible;
+ }
  void ShowShot(int index){
   if(gallery.Count==0)return;
   galleryIndex=(index+gallery.Count)%gallery.Count;
@@ -741,6 +749,8 @@ public sealed class MainWindow:Window{
   detailMeta.Visibility=Visibility.Collapsed;
   detailReviews.Text="";
   detailReviews.Visibility=Visibility.Collapsed;
+  detailNews.Text="";
+  detailNews.Visibility=Visibility.Collapsed;
   detailStats.Text="…";
   var first=steam?CloudLog.Status(game.Id):null;
   detailSync.Text=steam?CloudLog.Describe(first):"";
@@ -761,6 +771,7 @@ public sealed class MainWindow:Window{
   UpdateHints();
   if(steam)LoadPadChip(game);
   if(steam)LoadReviews(game);
+  if(steam)LoadNews(game);
   var infoTask=steam?Details.Get(game.Id):Task.FromResult<GameInfo?>(null);
   var statsTask=steam?Stats.Get(game.Id):Task.FromResult<PlayInfo?>(null);
   var art=await Art.Hero(game.Id);
