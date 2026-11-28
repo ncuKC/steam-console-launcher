@@ -78,6 +78,10 @@ public sealed class MainWindow:Window{
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
+ static async Task Pace(DateTime since,int milliseconds){
+  int left=milliseconds-(int)(DateTime.Now-since).TotalMilliseconds;
+  if(left>0)await Task.Delay(left);
+ }
  static TransformGroup Pair(ScaleTransform scale,TranslateTransform move){
   var group=new TransformGroup();
   group.Children.Add(scale);
@@ -196,19 +200,34 @@ public sealed class MainWindow:Window{
    timer.Tick+=(_,_)=>Tick();
    timer.Start();
    SelectTab(0);
+   SetStep("Поиск игр…",500);
    games=await Library.Load();
    FillShelves();
-   int wait=3000-(int)(DateTime.Now-started).TotalMilliseconds;
-   if(wait>0)await Task.Delay(wait);
+   await Pace(started,1600);
+   var step=DateTime.Now;
+   SetStep("Найдено игр: "+games.Count,0);
+   await Pace(step,900);
+   step=DateTime.Now;
+   SetStep("Загрузка обложек…",0);
+   try{await Task.WhenAny(Task.WhenAll(games.Take(8).Select(game=>Art.Wide(game.Id))),Task.Delay(1800));}catch{}
+   await Pace(step,900);
+   step=DateTime.Now;
+   SetStep("Готово",0);
+   await Pace(step,600);
    EndSplash();
   };
   Closed+=(_,_)=>{timer.Stop();slideTimer.Stop();pad.Dispose();};
  }
+ void SetStep(string text,int delayMilliseconds){
+  if(subEl==null)return;
+  subEl.Text=text;
+  subEl.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(350)){BeginTime=TimeSpan.FromMilliseconds(delayMilliseconds)});
+ }
  void BuildSplash(Grid canvas){
   glowEl=new Shapes.Ellipse{Width=1200,Height=1200,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Fill=new RadialGradientBrush(Color.FromArgb(0x66,0x66,0xC0,0xF4),Colors.Transparent),Opacity=0,RenderTransformOrigin=new Point(.5,.5),RenderTransform=splashGlow};
   logoEl=new Viewbox{Width=320,Height=224,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,-150,0,0),Child=ControllerLogo(),Opacity=0,RenderTransformOrigin=new Point(.5,.5),RenderTransform=splashLogo};
-  titleEl=new TextBlock{Text="P L A Y",FontSize=110,FontWeight=FontWeights.Light,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,150,0,0),Opacity=0,RenderTransform=splashTitle};
-  subEl=new TextBlock{Text="Загрузка библиотеки…",FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,300,0,0),Opacity=0};
+  titleEl=new TextBlock{Text="G A M E   L A U N C H E R",FontSize=76,FontWeight=FontWeights.Light,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,150,0,0),Opacity=0,RenderTransform=splashTitle};
+  subEl=new TextBlock{Text="",FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,300,0,0),Opacity=0};
   var track=new Border{Width=420,Height=4,CornerRadius=new CornerRadius(2),Background=Ui.B("#22FFFFFF"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,370,0,0),ClipToBounds=true};
   track.Child=new Border{Width=150,Height=4,CornerRadius=new CornerRadius(2),Background=Ui.B("#66C0F4"),HorizontalAlignment=HorizontalAlignment.Left,RenderTransform=splashBar};
   splash.Children.Add(glowEl);
@@ -233,7 +252,6 @@ public sealed class MainWindow:Window{
   var delay=TimeSpan.FromMilliseconds(450);
   titleEl!.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)){BeginTime=delay});
   splashTitle.BeginAnimation(TranslateTransform.YProperty,new DoubleAnimation(24,0,TimeSpan.FromMilliseconds(800)){BeginTime=delay,EasingFunction=ease});
-  subEl!.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)){BeginTime=TimeSpan.FromMilliseconds(900)});
   splashBar.BeginAnimation(TranslateTransform.XProperty,new DoubleAnimation(-150,420,TimeSpan.FromMilliseconds(1300)){RepeatBehavior=RepeatBehavior.Forever,EasingFunction=sine});
   Sound.Play("open");
  }
