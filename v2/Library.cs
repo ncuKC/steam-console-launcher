@@ -56,7 +56,8 @@ public static class Library{
   var savedLast=new Dictionary<string,long>();
   foreach(var item in saved)savedLast[item.Id]=Math.Max(item.LastPlayed,savedLast.TryGetValue(item.Id,out var before)?before:0);
   var installed=local.Select(item=>item.Id).ToHashSet();
-  var all=saved.Select(item=>new Game(item.Id,item.Name,false,0)).Concat(local);
+  var owned=await OwnedGames.Get();
+  var all=saved.Select(item=>new Game(item.Id,item.Name,false,0)).Concat(owned.Select(item=>new Game(item.Id,item.Name,false,0))).Concat(local);
   var steamGames=all
    .Where(item=>item.Id.Length>0&&item.Id!="228980")
    .GroupBy(item=>item.Id)

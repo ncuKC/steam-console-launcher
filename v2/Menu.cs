@@ -5,9 +5,8 @@ using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using System.Windows.Threading;
 using Microsoft.Win32;
-using Velopack;
-using Velopack.Sources;
 namespace ConsoleLauncher;
 public sealed class SideMenu:Border{
  sealed class Entry{
@@ -28,17 +27,21 @@ public sealed class SideMenu:Border{
  static readonly FontFamily Icons=new("Segoe MDL2 Assets");
  const string RunKey=@"Software\Microsoft\Windows\CurrentVersion\Run";
  const string RunName="SteamConsoleLauncher";
+ const double BarWidth=530;
  readonly List<Entry> entries=new();
  readonly StackPanel list=new();
  readonly TextBlock status=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(36,10,36,0)};
  readonly TranslateTransform slide=new(-90,0);
+ readonly Border updateCard=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(18,14,18,16),Margin=new Thickness(36,0,36,18),Background=Ui.B("#1FFFFFFF"),Visibility=Visibility.Collapsed};
+ readonly TextBlock updateTitle=new(){FontSize=20,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextTrimming=TextTrimming.CharacterEllipsis};
+ readonly TextBlock updateInfo=new(){FontSize=16,Foreground=Ui.B("#9FB3C8"),TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,10,0,0)};
+ readonly Border updateFill=new(){Height=8,Width=0,CornerRadius=new CornerRadius(4),HorizontalAlignment=HorizontalAlignment.Left,Background=new LinearGradientBrush(Hex("#66C0F4"),Hex("#9BE564"),0)};
+ readonly DispatcherTimer updateTimer=new(){Interval=TimeSpan.FromMilliseconds(250)};
  Entry autostart=new();
  Entry? restart,shutdown,armed;
  DateTime armedAt;
  int index,closing;
  bool busy,open;
- UpdateManager? manager;
- UpdateInfo? update;
  public bool IsOpen=>open;
  public SideMenu(Action close,Action quit,Action minimize){
   Width=640;
@@ -53,21 +56,31 @@ public sealed class SideMenu:Border{
   var root=new StackPanel();
   Child=root;
   var header=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(36,40,36,4)};
-  header.Children.Add(new TextBlock{Text="",FontFamily=Icons,FontSize=34,Foreground=new SolidColorBrush(Accent),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,18,0)});
+  header.Children.Add(new TextBlock{Text="\ue700",FontFamily=Icons,FontSize=34,Foreground=new SolidColorBrush(Accent),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(0,0,18,0)});
   header.Children.Add(new TextBlock{Text="Меню",FontSize=44,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center});
   root.Children.Add(header);
   var version=Assembly.GetExecutingAssembly().GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion??"development";
-  root.Children.Add(new TextBlock{Text="Версия: "+version.Split('+')[0],FontSize=18,Foreground=Ui.B("#8F98A0"),Margin=new Thickness(36,0,36,22)});
+  root.Children.Add(new TextBlock{Text="Версия: "+version.Split('+')[0],FontSize=18,Foreground=Ui.B("#8F98A0"),Margin=new Thickness(36,0,36,18)});
+  var bar=new Grid{Margin=new Thickness(0,12,0,0),Height=8};
+  bar.Children.Add(new Border{Height=8,CornerRadius=new CornerRadius(4),Background=Ui.B("#26FFFFFF")});
+  bar.Children.Add(updateFill);
+  var cardPanel=new StackPanel();
+  cardPanel.Children.Add(updateTitle);
+  cardPanel.Children.Add(bar);
+  cardPanel.Children.Add(updateInfo);
+  updateCard.Child=cardPanel;
+  root.Children.Add(updateCard);
   root.Children.Add(list);
   root.Children.Add(status);
-  Add("Продолжить","",()=>{close();return Task.CompletedTask;});
-  Add("Свернуть лаунчер","",()=>{minimize();return Task.CompletedTask;});
-  autostart=Add("","",ToggleAutostart);
-  Add("Проверить обновления","",Check);
-  Add("Скачать обновление и перезапустить","",Install);
-  restart=Add("Перезагрузить ПК","",()=>Power(restart!,"/r"),true);
-  shutdown=Add("Выключить ПК","",()=>Power(shutdown!,"/s"),true);
-  Add("Закрыть лаунчер","",()=>{quit();return Task.CompletedTask;});
+  updateTimer.Tick+=(_,_)=>RefreshUpdate();
+  Add("Продолжить","\ue768",()=>{close();return Task.CompletedTask;});
+  Add("Свернуть лаунчер","\ue921",()=>{minimize();return Task.CompletedTask;});
+  autostart=Add("","\ue713",ToggleAutostart);
+  Add("Проверить обновления","\ue895",Check);
+  Add("Обновить лаунчер и перезапустить","\ue896",Install);
+  restart=Add("Перезагрузить ПК","\ue72c",()=>Power(restart!,"/r"),true);
+  shutdown=Add("Выключить ПК","\ue7e8",()=>Power(shutdown!,"/s"),true);
+  Add("Закрыть лаунчер","\ue711",()=>{quit();return Task.CompletedTask;});
   RefreshAutostart();
  }
  Entry Add(string text,string icon,Func<Task> run,bool danger=false){
@@ -88,6 +101,29 @@ public sealed class SideMenu:Border{
   entries.Add(entry);
   return entry;
  }
+ void SetBar(int percent){
+  double target=BarWidth*Math.Clamp(percent,0,100)/100.0;
+  updateFill.BeginAnimation(WidthProperty,new DoubleAnimation(target,TimeSpan.FromMilliseconds(240)));
+ }
+ void RefreshUpdate(){
+  var state=SelfUpdate.State;
+  if(state==SelfUpdate.Phase.Downloading){
+   updateCard.Visibility=Visibility.Visible;
+   updateTitle.Text="Загрузка обновления "+SelfUpdate.Version;
+   updateInfo.Text=SelfUpdate.Percent+"%";
+   SetBar(SelfUpdate.Percent);
+  }else if(state==SelfUpdate.Phase.Ready){
+   updateCard.Visibility=Visibility.Visible;
+   updateTitle.Text="Обновление "+SelfUpdate.Version+" готово";
+   updateInfo.Text="Установится при закрытии лаунчера или по кнопке ниже.";
+   SetBar(100);
+  }else if(state==SelfUpdate.Phase.Failed){
+   updateCard.Visibility=Visibility.Visible;
+   updateTitle.Text="Не удалось загрузить обновление";
+   updateInfo.Text=SelfUpdate.Error;
+   SetBar(0);
+  }else updateCard.Visibility=Visibility.Collapsed;
+ }
  public void Open(){
   open=true;
   closing++;
@@ -96,6 +132,8 @@ public sealed class SideMenu:Border{
   status.Text="";
   ResetPower();
   RefreshAutostart();
+  RefreshUpdate();
+  updateTimer.Start();
   Highlight(true);
   var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
   BeginAnimation(OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(220)));
@@ -112,6 +150,7 @@ public sealed class SideMenu:Border{
  public void Close(){
   if(!open)return;
   open=false;
+  updateTimer.Stop();
   int token=++closing;
   var fade=new DoubleAnimation(1,0,TimeSpan.FromMilliseconds(190));
   fade.Completed+=(_,_)=>{if(token==closing)Visibility=Visibility.Collapsed;};
@@ -177,7 +216,7 @@ public sealed class SideMenu:Border{
  Task Power(Entry entry,string flag){
   bool off=flag=="/s";
   if(armed==entry&&(DateTime.Now-armedAt).TotalSeconds<5){
-   try{Process.Start(new ProcessStartInfo("shutdown",flag+" /t 3"){CreateNoWindow=true,UseShellExecute=false});}catch{}
+   try{Process.Start(new ProcessStartInfo("shutdown",flag+" /t 0"){CreateNoWindow=true,UseShellExecute=false});}catch{}
    status.Text=off?"Выключение…":"Перезагрузка…";
    armed=null;
    return Task.CompletedTask;
@@ -197,23 +236,22 @@ public sealed class SideMenu:Border{
   busy=true;
   try{
    status.Text="Проверка обновлений…";
-   manager??=new UpdateManager(new GithubSource("https://github.com/ncuKC/steam-console-launcher",null,false));
-   if(!manager.IsInstalled){status.Text="Для обновлений установите лаунчер через Setup.exe.";return;}
-   update=await manager.CheckForUpdatesAsync();
-   status.Text=update==null?"Установлена актуальная версия.":"Доступна версия "+update.TargetFullRelease.Version+". Выберите «Скачать обновление и перезапустить».";
+   status.Text=await SelfUpdate.Run(true);
   }catch(Exception ex){status.Text="Не удалось проверить обновления: "+ex.Message;}
   finally{busy=false;}
  }
  async Task Install(){
   if(busy)return;
-  if(update==null){await Check();if(update==null)return;}
   if(GameRunning()){status.Text="Завершите игру перед обновлением лаунчера.";return;}
   busy=true;
   try{
-   status.Text="Скачивание обновления…";
-   await manager!.DownloadUpdatesAsync(update);
+   if(SelfUpdate.State!=SelfUpdate.Phase.Ready){
+    status.Text="Проверка обновлений…";
+    var message=await SelfUpdate.Run(true);
+    if(SelfUpdate.State!=SelfUpdate.Phase.Ready){status.Text=message;return;}
+   }
    status.Text="Применение обновления…";
-   manager.ApplyUpdatesAndRestart(update);
+   if(!SelfUpdate.InstallAndRestart())status.Text="Обновление не применено.";
   }catch(Exception ex){status.Text="Обновление не применено: "+ex.Message;}
   finally{busy=false;}
  }
