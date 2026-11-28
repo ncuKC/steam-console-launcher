@@ -86,7 +86,7 @@ public sealed class MainWindow:Window{
  List<string> letters=new();
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
- int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken,galleryIndex,shotToken;
+ int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken,galleryIndex,shotToken,fastTicks;
  bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip;
  string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
@@ -793,6 +793,18 @@ public sealed class MainWindow:Window{
   if(favChanged){favChanged=false;FillShelves();}
   UpdateHints();
  }
+ void LowerBehind(){
+  Topmost=false;
+  Native.Lower(this);
+  slideTimer.Stop();
+  if(Content is UIElement root)root.Visibility=Visibility.Hidden;
+ }
+ void ShowAgain(){
+  if(Content is UIElement root&&root.Visibility!=Visibility.Visible){
+   root.Visibility=Visibility.Visible;
+   if(tab==1&&slides.Count>1)slideTimer.Start();
+  }
+ }
  void Launch(Game? game){
   if(game==null)return;
   Library.RecordPlayed(game.Id);
@@ -822,9 +834,11 @@ public sealed class MainWindow:Window{
   userMinimized=false;
   lastInput=DateTime.Now;
   syncUntil=DateTime.Now.AddSeconds(90);
+  ShowAgain();
   WindowState=WindowState.Maximized;
   Activate();
   Topmost=true;
+  Native.Raise(this);
   games=await Library.Load();
   FillShelves();
  }
@@ -837,7 +851,7 @@ public sealed class MainWindow:Window{
    if(watchDir==null)return;
    bool alive=task.Status==TaskStatus.RanToCompletion&&task.Result;
    if(alive){
-    if(!dirSeen){dirSeen=true;WindowState=WindowState.Minimized;}
+    if(!dirSeen){dirSeen=true;LowerBehind();}
    }else if(dirSeen){
     watchDir=null;
     dirSeen=false;
@@ -868,7 +882,7 @@ public sealed class MainWindow:Window{
   int running=raw is int value?value:0;
   if(watchId!=null){
    if(running.ToString()==watchId){
-    if(!watchSeen){watchSeen=true;WindowState=WindowState.Minimized;}
+    if(!watchSeen){watchSeen=true;LowerBehind();}
    }else if(watchSeen){
     watchId=null;
     watchSeen=false;
@@ -882,6 +896,7 @@ public sealed class MainWindow:Window{
    if(saver)StopSaver();
   }else{
    if(!Topmost)Topmost=true;
+   ShowAgain();
    if(!userMinimized){
     if(WindowState==WindowState.Minimized)WindowState=WindowState.Maximized;
     Native.Raise(this);
@@ -966,6 +981,16 @@ public sealed class MainWindow:Window{
    if(!splashing)Press(code);
   }
   if(pad.ComboHeld()){comboTicks++;if(comboTicks>45)Close();}else comboTicks=0;
+  if(watchId!=null&&watchSeen&&++fastTicks>=10){
+   fastTicks=0;
+   var fastRaw=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0);
+   int fastRunning=fastRaw is int fastValue?fastValue:0;
+   if(fastRunning.ToString()!=watchId){
+    watchId=null;
+    watchSeen=false;
+    ReturnFromGame();
+   }
+  }
   if(++styleTicks>=90){
    styleTicks=0;
    if(Controller.Refresh()){

@@ -26,6 +26,8 @@ public static class Native{
  static extern bool EnumWindows(EnumProc callback,IntPtr param);
  [DllImport("user32.dll",CharSet=CharSet.Unicode)]
  static extern int GetWindowText(IntPtr window,StringBuilder text,int max);
+ [DllImport("user32.dll",CharSet=CharSet.Unicode)]
+ static extern int GetClassName(IntPtr window,StringBuilder text,int max);
  [DllImport("kernel32.dll")]
  static extern uint GetCurrentThreadId();
  [DllImport("kernel32.dll",SetLastError=true)]
@@ -39,8 +41,25 @@ public static class Native{
    var handle=new WindowInteropHelper(window).Handle;
    if(handle==IntPtr.Zero)return;
    SetWindowPos(handle,new IntPtr(-1),0,0,0,0,0x0001|0x0002|0x0010);
-   if(HideSteam())Focus(handle);
+   bool hid=HideSteam();
+   bool shell=ShellFront();
+   if(hid||shell)Focus(handle);
   }catch{}
+ }
+ public static void Lower(Window window){
+  try{
+   var handle=new WindowInteropHelper(window).Handle;
+   if(handle==IntPtr.Zero)return;
+   SetWindowPos(handle,new IntPtr(1),0,0,0,0,0x0001|0x0002|0x0010);
+  }catch{}
+ }
+ static bool ShellFront(){
+  var front=GetForegroundWindow();
+  if(front==IntPtr.Zero)return true;
+  var name=new StringBuilder(64);
+  GetClassName(front,name,64);
+  var value=name.ToString();
+  return value=="Shell_TrayWnd"||value=="Shell_SecondaryTrayWnd"||value=="Progman"||value=="WorkerW"||value=="NotifyIconOverflowWindow"||value=="TopLevelWindowForOverflowXamlIsland";
  }
  static void Focus(IntPtr handle){
   var front=GetForegroundWindow();
