@@ -14,14 +14,17 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailTitle=new(){FontSize=68,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,MaxWidth=1100};
  readonly TextBlock detailStatus=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,0,0,10)};
  readonly TextBlock detailPlay=new(){FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
+ readonly TextBlock chip=new(){FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,14,44,0),Visibility=Visibility.Collapsed};
  readonly Border[] tabBorders=new Border[3];
  readonly TextBlock clock=new(){FontSize=26,Foreground=Ui.B("#C6D4DF"),VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Right};
  readonly WrapPanel hints=new(){VerticalAlignment=VerticalAlignment.Center};
  readonly Gamepad pad=new();
  readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromMilliseconds(33)};
  readonly SideMenu menu;
+ readonly SearchKeyboard keyboard=new();
  List<Game> games=new();
- int tab,version,comboTicks;
+ int tab,version,comboTicks,filter;
+ string query="";
  bool inDetails;
  Game? detailGame;
  Shelves? Active=>tab==0?home:tab==1?library:null;
@@ -72,11 +75,16 @@ public sealed class MainWindow:Window{
   pages.Children.Add(home);
   pages.Children.Add(library);
   pages.Children.Add(store);
+  pages.Children.Add(chip);
   library.Visibility=Visibility.Collapsed;
   store.Children.Add(new TextBlock{Text="Магазин появится в следующей версии",FontSize=36,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center});
   Grid.SetRow(hints,2);
   layout.Children.Add(hints);
   BuildDetails(canvas);
+  keyboard.Changed+=text=>{query=text;FillLibrary();};
+  keyboard.FilterPressed+=CycleFilter;
+  keyboard.Closed+=UpdateHints;
+  canvas.Children.Add(keyboard);
   menu=new SideMenu(CloseMenu,()=>Close());
   canvas.Children.Add(menu);
   home.Focused+=OnFocused;
@@ -114,12 +122,25 @@ public sealed class MainWindow:Window{
   }
  }
  void UpdateHints(){
-  if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
+  if(keyboard.IsOpen)SetHints(("A","Ввод"),("X","Стереть"),("Y","Пробел"),("B","Закрыть"));
+  else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
   else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Раздел"));
-  else SetHints(("A","Открыть"),("X","Играть"),("≡","Меню"),("LB/RB","Раздел"));
+  else SetHints(("A","Открыть"),("X","Играть"),("Y","Поиск"),("≡","Меню"),("LB/RB","Раздел"));
  }
  void CloseMenu(){
   menu.Close();
+  UpdateHints();
+ }
+ string FilterName()=>filter==1?"Установленные":filter==2?"Не установленные":"Все";
+ string FilterText()=>"Фильтр: "+FilterName();
+ void CycleFilter(){
+  filter=(filter+1)%3;
+  keyboard.SetFilter(FilterText());
+  FillLibrary();
+ }
+ void OpenSearch(){
+  if(tab!=1)SelectTab(1);
+  keyboard.Open(query,FilterText());
   UpdateHints();
  }
  void SelectTab(int index){
@@ -131,6 +152,7 @@ public sealed class MainWindow:Window{
   home.Visibility=tab==0?Visibility.Visible:Visibility.Collapsed;
   library.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   store.Visibility=tab==2?Visibility.Visible:Visibility.Collapsed;
+  chip.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   if(Active?.Current is Game current)OnFocused(current);
   UpdateHints();
  }
@@ -138,10 +160,20 @@ public sealed class MainWindow:Window{
   var recent=games.Where(item=>item.Installed&&item.LastPlayed>0).OrderByDescending(item=>item.LastPlayed).Take(12).ToList();
   var installed=games.Where(item=>item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   var others=games.Where(item=>!item.Installed).OrderByDescending(item=>item.LastPlayed).ThenBy(item=>item.Name).ToList();
-  var othersByName=others.OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   home.SetRows(new[]{("Недавние",recent),("Установленные игры",installed),("Ещё в коллекции",others.Take(24).ToList())});
-  library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",othersByName)));
+  FillLibrary();
   if(Active?.Current is Game current)OnFocused(current);
+ }
+ void FillLibrary(){
+  var visible=games.Where(item=>(filter!=1||item.Installed)&&(filter!=2||!item.Installed)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
+  var installed=visible.Where(item=>item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
+  var others=visible.Where(item=>!item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
+  library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",others)));
+  var text="Игр: "+visible.Count;
+  if(query.Length>0)text+=" · Поиск: "+query;
+  if(filter!=0)text+=" · "+FilterName();
+  chip.Text=text;
+  if(tab==1&&library.Current is Game current)OnFocused(current);
  }
  async void OnFocused(Game game){
   int mine=++version;
@@ -168,6 +200,17 @@ public sealed class MainWindow:Window{
   try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{}
  }
  void Press(int code){
+  if(keyboard.IsOpen){
+   if(code==11)keyboard.Move(0,-1);
+   else if(code==12)keyboard.Move(0,1);
+   else if(code==13)keyboard.Move(-1,0);
+   else if(code==14)keyboard.Move(1,0);
+   else if(code==0)keyboard.Press();
+   else if(code==2)keyboard.Backspace();
+   else if(code==3)keyboard.Space();
+   else if(code==1||code==6)keyboard.Close();
+   return;
+  }
   if(menu.IsOpen){
    if(code==11)menu.Move(-1);
    else if(code==12)menu.Move(1);
@@ -182,6 +225,7 @@ public sealed class MainWindow:Window{
    return;
   }
   switch(code){
+   case 3:OpenSearch();break;
    case 9:SelectTab((tab+2)%3);break;
    case 10:SelectTab((tab+1)%3);break;
    case 11:Active?.Move(0,-1);break;
@@ -193,9 +237,10 @@ public sealed class MainWindow:Window{
   }
  }
  void OnKey(object sender,KeyEventArgs e){
-  int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,Key.Tab=>6,_=>-1};
+  int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,Key.Tab=>6,Key.F=>3,_=>-1};
   if(e.Key==Key.Escape){
-   if(menu.IsOpen)CloseMenu();
+   if(keyboard.IsOpen)keyboard.Close();
+   else if(menu.IsOpen)CloseMenu();
    else if(inDetails)CloseDetails();
    else Close();
    e.Handled=true;
