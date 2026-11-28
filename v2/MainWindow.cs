@@ -9,6 +9,7 @@ using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
  static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
+ static readonly string[] StoreNames={"Все игры","Steam","Epic Games","GOG","Свои"};
  static readonly string[] TabNames={"Главная","Библиотека","Магазин"};
  readonly Image backdrop=new(){Stretch=Stretch.UniformToFill};
  readonly Image backdropFront=new(){Stretch=Stretch.UniformToFill,Opacity=0};
@@ -38,7 +39,7 @@ public sealed class MainWindow:Window{
  List<Game> libraryOrder=new();
  List<string> letters=new();
  List<int> sectionIds=new();
- int tab,version,comboTicks,filter,sort,letterIndex,pollTicks,watchTicks;
+ int tab,version,comboTicks,filter,sort,letterIndex,pollTicks,watchTicks,source;
  bool reverse,watchSeen;
  string? watchId;
  string query="";
@@ -186,9 +187,10 @@ public sealed class MainWindow:Window{
   FillLibrary();
  }
  void OpenSection(int index){
-  filter=index;
+  source=index;
+  filter=0;
   query="";
-  sort=index==4?1:0;
+  sort=0;
   reverse=false;
   keyboard.SetFilter(FilterText());
   FillLibrary();
@@ -204,6 +206,7 @@ public sealed class MainWindow:Window{
   if(tab!=1)SelectTab(1);
   popup.SetItems(new[]{
    Item(()=>"Поиск: "+(query.Length>0?query:"не задан"),_=>{popup.Close();OpenSearch();}),
+   Item(()=>"Лаунчер: "+StoreNames[source],direction=>{source=(source+Step(direction)+StoreNames.Length)%StoreNames.Length;FillLibrary();}),
    Item(()=>"Сортировка: "+SortName(),direction=>{sort=(sort+Step(direction)+3)%3;FillLibrary();}),
    Item(()=>"Порядок: "+(reverse?"обратный":"прямой"),_=>{reverse=!reverse;FillLibrary();}),
    Item(()=>FilterText(),direction=>{filter=(filter+Step(direction)+FilterNames.Length)%FilterNames.Length;keyboard.SetFilter(FilterText());FillLibrary();}),
@@ -216,7 +219,8 @@ public sealed class MainWindow:Window{
     }else letterIndex=(letterIndex+direction+letters.Count)%letters.Count;
    }),
    Item(()=>"Звуки: "+(Sound.Enabled?"вкл":"выкл"),_=>Sound.Toggle()),
-   Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;sort=0;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
+   Item(()=>"Открыть папку «Свои»",_=>{popup.Close();Stores.OpenOwn();}),
+   Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;source=0;sort=0;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
   });
   popup.Open();
   Appear(popup,0,30);
@@ -242,11 +246,10 @@ public sealed class MainWindow:Window{
  void FillShelves(){
   var items=new List<(string,int,Game?)>();
   sectionIds.Clear();
-  for(int i=0;i<FilterNames.Length;i++){
-   var list=games.Where(item=>Matches(item,i)).ToList();
-   if(list.Count==0&&i!=0)continue;
-   if(i==4)list=list.OrderByDescending(item=>item.LastPlayed).ToList();
-   items.Add((FilterNames[i],list.Count,list.FirstOrDefault()));
+  for(int i=0;i<StoreNames.Length;i++){
+   var list=games.Where(item=>i==0||item.Store==StoreNames[i]).ToList();
+   var sample=list.FirstOrDefault(item=>item.Store=="Steam")??list.FirstOrDefault();
+   items.Add((StoreNames[i],list.Count,sample));
    sectionIds.Add(i);
   }
   sections.Set(items);
@@ -260,14 +263,16 @@ public sealed class MainWindow:Window{
   return items;
  }
  void FillLibrary(){
-  var visible=games.Where(item=>Matches(item,filter)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
+  var visible=games.Where(item=>(source==0||item.Store==StoreNames[source])&&Matches(item,filter)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
   var installed=Sort(visible.Where(item=>item.Installed).ToList());
   var others=Sort(visible.Where(item=>!item.Installed).ToList());
   libraryOrder=installed.Concat(others).ToList();
   letters=libraryOrder.Select(Letter).Distinct().OrderBy(item=>item,StringComparer.CurrentCultureIgnoreCase).ToList();
   letterIndex=Math.Clamp(letterIndex,0,Math.Max(0,letters.Count-1));
+  library.EmptyHint=source==4?"Положите ярлык или exe в папку «Свои»: Y → Открыть папку «Свои».":source==2?"Здесь появляются игры, установленные через Epic Games Launcher.":source==3?"Здесь появляются игры, установленные из GOG.":"Измените поиск или фильтр.";
   library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",others)));
   var text="Игр: "+visible.Count;
+  if(source!=0)text+=" · "+StoreNames[source];
   if(query.Length>0)text+=" · Поиск: "+query;
   if(filter!=0)text+=" · "+FilterName();
   if(sort!=0||reverse)text+=" · "+SortName();
@@ -285,7 +290,7 @@ public sealed class MainWindow:Window{
  }
  void ShowDetailState(Game game){
   bool fav=Favorites.Has(game.Id);
-  detailStatus.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+(fav?"   ★ ИЗБРАННОЕ":"");
+  detailStatus.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+" · "+game.Store.ToUpperInvariant()+(fav?"   ★ ИЗБРАННОЕ":"");
   detailHint.Text="A / X  "+(game.Installed?"Играть":"Установить")+"        Y  "+(fav?"Убрать из избранного":"В избранное")+"        B  Назад";
  }
  void AnimateDetailsIn(){
@@ -298,10 +303,11 @@ public sealed class MainWindow:Window{
   grow.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.04,1,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
  }
  async void OpenDetails(Game game){
+  bool steam=game.Store=="Steam";
   inDetails=true;
   detailGame=game;
   detailTitle.Text=game.Name;
-  detailMeta.Text="";
+  detailMeta.Text=steam?"":game.Store;
   detailStats.Text="";
   detailDesc.Text="";
   detailPlay.Text=game.Installed?"Играть":"Установить";
@@ -309,11 +315,11 @@ public sealed class MainWindow:Window{
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
   AnimateDetailsIn();
-  var infoTask=Details.Get(game.Id);
-  var statsTask=Stats.Get(game.Id);
+  var infoTask=steam?Details.Get(game.Id):Task.FromResult<GameInfo?>(null);
+  var statsTask=steam?Stats.Get(game.Id):Task.FromResult<PlayInfo?>(null);
   detailArt.Source=await Art.Hero(game.Id);
   var stats=await statsTask;
-  if(inDetails&&detailGame==game)detailStats.Text=Describe(stats);
+  if(steam&&inDetails&&detailGame==game)detailStats.Text=Describe(stats);
   var info=await infoTask;
   if(info!=null&&inDetails&&detailGame==game){
    var parts=new[]{info.Genres,info.Developer,info.Year}.Where(part=>part.Length>0);
@@ -331,6 +337,10 @@ public sealed class MainWindow:Window{
  void Launch(Game? game){
   if(game==null)return;
   Library.RecordPlayed(game.Id);
+  if(game.Store!="Steam"){
+   Stores.Start(game);
+   return;
+  }
   try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{return;}
   if(game.Installed){
    watchId=game.Id;

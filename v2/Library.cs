@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
-public sealed record Game(string Id,string Name,bool Installed,long LastPlayed);
+public sealed record Game(string Id,string Name,bool Installed,long LastPlayed,string Store="Steam",string Launch="",string Args="",string Dir="");
 public static class Library{
  public static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamConsoleLauncher");
  sealed class Saved{public string Id{get;set;}="";public string Name{get;set;}="";public long LastPlayed{get;set;}}
@@ -56,13 +56,17 @@ public static class Library{
   }
   var installed=local.Select(item=>item.Id).ToHashSet();
   var all=saved.Select(item=>new Game(item.Id,item.Name,false,item.LastPlayed)).Concat(local);
-  return all
+  var steamGames=all
    .Where(item=>item.Id.Length>0&&item.Id!="228980")
    .GroupBy(item=>item.Id)
    .Select(group=>{
     long last=Math.Max(group.Max(x=>x.LastPlayed),played.TryGetValue(group.Key,out var stamp)?stamp:0);
     return new Game(group.Key,group.Last().Name,installed.Contains(group.Key),last);
    })
+   .ToList();
+  var extra=await Task.Run(Stores.Scan);
+  var others=extra.Select(item=>item with{LastPlayed=Math.Max(item.LastPlayed,played.TryGetValue(item.Id,out var lastStamp)?lastStamp:0)});
+  return steamGames.Concat(others)
    .OrderByDescending(item=>item.LastPlayed)
    .ThenBy(item=>item.Name)
    .ToList();

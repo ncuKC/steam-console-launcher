@@ -6,6 +6,7 @@ using System.Windows.Threading;
 namespace ConsoleLauncher;
 public sealed class Shelves:Grid{
  const double RowStep=270,TileStep=308;
+ static string Short(string store)=>store switch{"Epic Games"=>"EPIC","Свои"=>"СВОИ",_=>store.ToUpperInvariant()};
  sealed class Tile:Border{
   public Game Game{get;}
   readonly ScaleTransform scale=new(1,1);
@@ -22,6 +23,7 @@ public sealed class Shelves:Grid{
    holder.Children.Add(face);
    var label=new TextBlock{Text=game.Name,FontSize=18,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(10,0,10,10),Visibility=Visibility.Collapsed};
    holder.Children.Add(label);
+   holder.Children.Add(new Border{Background=Ui.B("#B3000000"),CornerRadius=new CornerRadius(3),Padding=new Thickness(6,2,6,2),Margin=new Thickness(8),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Top,Child=new TextBlock{Text=Short(game.Store),FontSize=12,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White}});
    Loaded+=async(_,_)=>{
     if(face.Source!=null)return;
     face.Source=await Art.Wide(game.Id);
@@ -50,6 +52,7 @@ public sealed class Shelves:Grid{
  Tile? active;
  int ri,ci,heroVersion;
  public bool FixedRows;
+ public string EmptyHint="Измените поиск или фильтр.";
  public event Action<Game>? Focused;
  public event Action<Game>? Opened;
  public Game? Current=>active?.Game;
@@ -96,7 +99,7 @@ public sealed class Shelves:Grid{
    logo.Visibility=Visibility.Collapsed;
    title.Text="Ничего не найдено";
    title.Visibility=Visibility.Visible;
-   meta.Text="Измените поиск или фильтр, либо установите игру в Steam.";
+   meta.Text=EmptyHint;
    return;
   }
   Place(false);
@@ -109,7 +112,7 @@ public sealed class Shelves:Grid{
   active=rows[ri][ci];
   active.SetFocus(true);
   var game=active.Game;
-  caption.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+" · STEAM";
+  caption.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+" · "+game.Store.ToUpperInvariant();
   ShowHero(game);
   meta.Text=game.LastPlayed>0?"Последняя активность: "+DateTimeOffset.FromUnixTimeSeconds(game.LastPlayed).LocalDateTime.ToString("d MMMM yyyy"):"";
   Scroll();

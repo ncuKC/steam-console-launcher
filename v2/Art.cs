@@ -11,7 +11,17 @@ public static class Art{
  public static Task<BitmapImage?> Wide(string id)=>Get(id+"_wide",new[]{"capsule_616x353.jpg","header.jpg"},id,600);
  public static Task<BitmapImage?> Hero(string id)=>Get(id+"_hero",new[]{"library_hero.jpg","header.jpg"},id,1600);
  public static Task<BitmapImage?> Logo(string id)=>Get(id+"_logo",new[]{"logo.png","library_logo.png"},id,700);
- static Task<BitmapImage?> Get(string key,string[] names,string id,int width)=>Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
+ static Task<BitmapImage?> Get(string key,string[] names,string id,int width){
+  if(id.Length==0||!id.All(char.IsDigit))return Local(key,id,width);
+  return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
+ }
+ static async Task<BitmapImage?> Local(string key,string id,int width){
+  if(key.EndsWith("_logo")||!Stores.ArtPath.TryGetValue(id,out var path))return null;
+  try{
+   var bytes=await File.ReadAllBytesAsync(path);
+   return await Task.Run(()=>Decode(bytes,width));
+  }catch{return null;}
+ }
  static BitmapImage Decode(byte[] bytes,int width){
   using var stream=new MemoryStream(bytes);
   var image=new BitmapImage();
