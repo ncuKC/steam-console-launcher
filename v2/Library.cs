@@ -40,6 +40,7 @@ public static class Library{
   }
   return result;
  }
+ public static bool IsInstalled(string id)=>Scan().Any(item=>item.Id==id);
  public static async Task<List<Game>> Load(){
   var local=await Task.Run(Scan);
   var steamLast=await Task.Run(Stats.LastPlayedAll);
