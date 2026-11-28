@@ -46,6 +46,7 @@ public sealed class Shelves:Grid{
  readonly List<ScrollViewer> viewers=new();
  Tile? active;
  int ri,ci;
+ public bool FixedRows;
  public event Action<Game>? Focused;
  public event Action<Game>? Opened;
  public Game? Current=>active?.Game;
@@ -64,7 +65,7 @@ public sealed class Shelves:Grid{
   foreach(var (name,games) in data){
    if(games.Count==0)continue;
    var list=new List<Tile>();
-   var strip=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(44,0,700,0)};
+   var strip=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(44,0,FixedRows?0:700,0)};
    foreach(var game in games){var tile=new Tile(game);list.Add(tile);strip.Children.Add(tile);}
    var viewer=new ScrollViewer{Height=260,Margin=new Thickness(0,0,0,26),VerticalScrollBarVisibility=ScrollBarVisibility.Disabled,HorizontalScrollBarVisibility=ScrollBarVisibility.Hidden,Focusable=false,Content=strip};
    host.Children.Add(new TextBlock{Text=name,FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,Height=44,Margin=new Thickness(44,0,0,0)});
@@ -97,7 +98,7 @@ public sealed class Shelves:Grid{
  void Scroll(){
   if(rows.Count==0||ri>=viewers.Count)return;
   vertical.ScrollToVerticalOffset(ri*RowStep);
-  viewers[ri].ScrollToHorizontalOffset(Math.Max(0,(ci-1)*TileStep));
+  viewers[ri].ScrollToHorizontalOffset(FixedRows?0:Math.Max(0,(ci-1)*TileStep));
  }
  public void Move(int dx,int dy){
   if(rows.Count==0)return;

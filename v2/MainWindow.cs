@@ -25,13 +25,18 @@ public sealed class MainWindow:Window{
  Game? detailGame;
  Shelves? Active=>tab==0?home:tab==1?library:null;
  static TextBlock Hint(string text)=>new(){Text=text,FontSize=18,Foreground=Ui.B("#8F98A0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,10,0)};
+ static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
+  for(int i=0;i<list.Count;i+=5)yield return (i==0?title:"",list.Skip(i).Take(5).ToList());
+ }
  public MainWindow(){
   Title="PLAY";
   WindowStyle=WindowStyle.None;
   WindowState=WindowState.Maximized;
   Background=Brushes.Black;
   Foreground=Brushes.White;
+  Cursor=Cursors.None;
   FontFamily=new FontFamily("Segoe UI");
+  library.FixedRows=true;
   var canvas=new Grid{Width=1920,Height=1080,Background=Ui.B("#0B0F15")};
   Content=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};
   canvas.Children.Add(backdrop);
@@ -124,7 +129,7 @@ public sealed class MainWindow:Window{
   var others=games.Where(item=>!item.Installed).OrderByDescending(item=>item.LastPlayed).ThenBy(item=>item.Name).ToList();
   var othersByName=others.OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
   home.SetRows(new[]{("Недавние",recent),("Установленные игры",installed),("Ещё в коллекции",others.Take(24).ToList())});
-  library.SetRows(new[]{("Установленные",installed),("Не установленные",othersByName)});
+  library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",othersByName)));
   if(Active?.Current is Game current)OnFocused(current);
  }
  async void OnFocused(Game game){
