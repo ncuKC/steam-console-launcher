@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
@@ -10,6 +11,7 @@ public sealed class MainWindow:Window{
  static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
  static readonly string[] TabNames={"Главная","Библиотека","Магазин"};
  readonly Image backdrop=new(){Stretch=Stretch.UniformToFill};
+ readonly Image backdropFront=new(){Stretch=Stretch.UniformToFill,Opacity=0};
  readonly Sections sections=new();
  readonly Shelves library=new();
  readonly Grid store=new(){Visibility=Visibility.Collapsed};
@@ -50,6 +52,20 @@ public sealed class MainWindow:Window{
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
+ static void Appear(UIElement element,double dx,double dy){
+  var move=new TranslateTransform(dx,dy);
+  element.RenderTransform=move;
+  var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
+  element.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(220)));
+  if(dx!=0)move.BeginAnimation(TranslateTransform.XProperty,new DoubleAnimation(dx,0,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
+  if(dy!=0)move.BeginAnimation(TranslateTransform.YProperty,new DoubleAnimation(dy,0,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
+ }
+ static void PlayFor(int code){
+  if((code>=11&&code<=14)||code==9||code==10)Sound.Play("move");
+  else if(code==0||code==2)Sound.Play("select");
+  else if(code==1)Sound.Play("back");
+  else if(code==3||code==6)Sound.Play("open");
+ }
  static string Describe(PlayInfo? info){
   if(info==null)return "Время в игре: нет данных";
   int minutes=info.Minutes;
@@ -64,6 +80,7 @@ public sealed class MainWindow:Window{
   return "Время в игре: "+time+"   ·   \u2601 "+cloud;
  }
  public MainWindow(){
+  Sound.Load();
   Title="PLAY";
   WindowStyle=WindowStyle.None;
   WindowState=WindowState.Maximized;
@@ -75,6 +92,7 @@ public sealed class MainWindow:Window{
   var canvas=new Grid{Width=1920,Height=1080,Background=Ui.B("#0B0F15")};
   Content=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};
   canvas.Children.Add(backdrop);
+  canvas.Children.Add(backdropFront);
   canvas.Children.Add(new Border{IsHitTestVisible=false,Width=1300,HorizontalAlignment=HorizontalAlignment.Left,Background=Ui.Gradient(new Point(0,0),new Point(1,0),210,0)});
   canvas.Children.Add(new Border{IsHitTestVisible=false,Height=620,VerticalAlignment=VerticalAlignment.Bottom,Background=Ui.Gradient(new Point(0,0),new Point(0,1),0,245)});
   var layout=new Grid();
@@ -179,6 +197,7 @@ public sealed class MainWindow:Window{
  void OpenSearch(){
   if(tab!=1)SelectTab(1);
   keyboard.Open(query,FilterText());
+  Appear(keyboard,0,40);
   UpdateHints();
  }
  void OpenListMenu(){
@@ -196,12 +215,15 @@ public sealed class MainWindow:Window{
      if(hit!=null)library.Select(hit.Id);
     }else letterIndex=(letterIndex+direction+letters.Count)%letters.Count;
    }),
+   Item(()=>"Звуки: "+(Sound.Enabled?"вкл":"выкл"),_=>Sound.Toggle()),
    Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;sort=0;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
   });
   popup.Open();
+  Appear(popup,0,30);
   UpdateHints();
  }
  void SelectTab(int index){
+  int previous=tab;
   tab=index;
   screenName.Text=TabNames[tab];
   tabDots.Text=string.Join("  ",Enumerable.Range(0,3).Select(i=>i==tab?"\u25cf":"\u25cb"));
@@ -209,6 +231,10 @@ public sealed class MainWindow:Window{
   library.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   store.Visibility=tab==2?Visibility.Visible:Visibility.Collapsed;
   chip.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
+  if(index!=previous){
+   UIElement page=tab==0?(UIElement)sections:tab==1?(UIElement)library:store;
+   Appear(page,index>previous?60:-60,0);
+  }
   if(tab==0)sections.Refocus();
   else if(tab==1&&library.Current is Game current)OnFocused(current);
   UpdateHints();
@@ -251,12 +277,25 @@ public sealed class MainWindow:Window{
  async void OnFocused(Game game){
   int mine=++version;
   var image=await Art.Hero(game.Id);
-  if(mine==version)backdrop.Source=image;
+  if(mine!=version)return;
+  var fade=new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(350));
+  fade.Completed+=(_,_)=>{if(mine==version)backdrop.Source=image;};
+  backdropFront.Source=image;
+  backdropFront.BeginAnimation(UIElement.OpacityProperty,fade);
  }
  void ShowDetailState(Game game){
   bool fav=Favorites.Has(game.Id);
   detailStatus.Text=(game.Installed?"УСТАНОВЛЕНО":"В КОЛЛЕКЦИИ")+(fav?"   ★ ИЗБРАННОЕ":"");
   detailHint.Text="A / X  "+(game.Installed?"Играть":"Установить")+"        Y  "+(fav?"Убрать из избранного":"В избранное")+"        B  Назад";
+ }
+ void AnimateDetailsIn(){
+  var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
+  var grow=new ScaleTransform(1.04,1.04);
+  details.RenderTransformOrigin=new Point(.5,.5);
+  details.RenderTransform=grow;
+  details.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(220)));
+  grow.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(1.04,1,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
+  grow.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(1.04,1,TimeSpan.FromMilliseconds(280)){EasingFunction=ease});
  }
  async void OpenDetails(Game game){
   inDetails=true;
@@ -269,6 +308,7 @@ public sealed class MainWindow:Window{
   ShowDetailState(game);
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
+  AnimateDetailsIn();
   var infoTask=Details.Get(game.Id);
   var statsTask=Stats.Get(game.Id);
   detailArt.Source=await Art.Hero(game.Id);
@@ -283,7 +323,9 @@ public sealed class MainWindow:Window{
  }
  void CloseDetails(){
   inDetails=false;
-  details.Visibility=Visibility.Collapsed;
+  var fade=new DoubleAnimation(1,0,TimeSpan.FromMilliseconds(150));
+  fade.Completed+=(_,_)=>{if(!inDetails)details.Visibility=Visibility.Collapsed;};
+  details.BeginAnimation(UIElement.OpacityProperty,fade);
   if(favChanged){favChanged=false;FillShelves();}
  }
  void Launch(Game? game){
@@ -306,6 +348,7 @@ public sealed class MainWindow:Window{
   FillShelves();
  }
  void Press(int code){
+  PlayFor(code);
   if(keyboard.IsOpen){
    if(code==11)keyboard.Move(0,-1);
    else if(code==12)keyboard.Move(0,1);
@@ -333,7 +376,7 @@ public sealed class MainWindow:Window{
    else if(code==1||code==6)CloseMenu();
    return;
   }
-  if(code==6){menu.Open();UpdateHints();return;}
+  if(code==6){menu.Open();Appear(menu,-60,0);UpdateHints();return;}
   if(inDetails){
    if(code==1)CloseDetails();
    else if(code==0||code==2)Launch(detailGame);
