@@ -74,8 +74,8 @@ public sealed class Shelves:Grid{
   }
   if(rows.Count==0){
    caption.Text="";
-   title.Text="Игр пока нет";
-   meta.Text="Установите игру в Steam, и она появится здесь.";
+   title.Text="Ничего не найдено";
+   meta.Text="Измените поиск или фильтр, либо установите игру в Steam.";
    return;
   }
   Place(false);
@@ -108,6 +108,18 @@ public sealed class Shelves:Grid{
   if(r==ri&&c==ci)return;
   ri=r;ci=c;
   Place(true);
+ }
+ public bool Select(string id){
+  for(int r=0;r<rows.Count;r++){
+   for(int c=0;c<rows[r].Count;c++){
+    if(rows[r][c].Game.Id==id){
+     ri=r;ci=c;
+     Place(true);
+     return true;
+    }
+   }
+  }
+  return false;
  }
  public void Open(){if(active!=null)Opened?.Invoke(active.Game);}
 }

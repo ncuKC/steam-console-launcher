@@ -25,8 +25,12 @@ public sealed class MainWindow:Window{
  readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromMilliseconds(33)};
  readonly SideMenu menu;
  readonly SearchKeyboard keyboard=new();
+ readonly ListPopup popup=new();
  List<Game> games=new();
- int tab,version,comboTicks,filter;
+ List<Game> libraryOrder=new();
+ List<string> letters=new();
+ int tab,version,comboTicks,filter,sort,letterIndex;
+ bool reverse;
  string query="";
  bool inDetails,favChanged;
  Game? detailGame;
@@ -35,6 +39,9 @@ public sealed class MainWindow:Window{
  static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
   for(int i=0;i<list.Count;i+=5)yield return (i==0?title:"",list.Skip(i).Take(5).ToList());
  }
+ static (Func<string>,Action<int>) Item(Func<string> text,Action<int> act)=>(text,act);
+ static int Step(int direction)=>direction==0?1:direction;
+ static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  public MainWindow(){
   Title="PLAY";
   WindowStyle=WindowStyle.None;
@@ -88,6 +95,8 @@ public sealed class MainWindow:Window{
   keyboard.FilterPressed+=CycleFilter;
   keyboard.Closed+=UpdateHints;
   canvas.Children.Add(keyboard);
+  popup.Closed+=UpdateHints;
+  canvas.Children.Add(popup);
   menu=new SideMenu(CloseMenu,()=>Close());
   canvas.Children.Add(menu);
   home.Focused+=OnFocused;
@@ -128,9 +137,10 @@ public sealed class MainWindow:Window{
  }
  void UpdateHints(){
   if(keyboard.IsOpen)SetHints(("A","Ввод"),("X","Стереть"),("Y","Пробел"),("B","Закрыть"));
+  else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
   else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
   else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Раздел"));
-  else SetHints(("A","Открыть"),("X","Играть"),("Y","Поиск"),("≡","Меню"),("LB/RB","Раздел"));
+  else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("≡","Меню"),("LB/RB","Раздел"));
  }
  void CloseMenu(){
   menu.Close();
@@ -138,6 +148,7 @@ public sealed class MainWindow:Window{
  }
  string FilterName()=>filter==1?"Установленные":filter==2?"Не установленные":"Все";
  string FilterText()=>"Фильтр: "+FilterName();
+ string SortName()=>sort==1?"последний запуск":sort==2?"избранные сверху":"название";
  void CycleFilter(){
   filter=(filter+1)%3;
   keyboard.SetFilter(FilterText());
@@ -146,6 +157,26 @@ public sealed class MainWindow:Window{
  void OpenSearch(){
   if(tab!=1)SelectTab(1);
   keyboard.Open(query,FilterText());
+  UpdateHints();
+ }
+ void OpenListMenu(){
+  if(tab!=1)SelectTab(1);
+  popup.SetItems(new[]{
+   Item(()=>"Поиск: "+(query.Length>0?query:"не задан"),_=>{popup.Close();OpenSearch();}),
+   Item(()=>"Сортировка: "+SortName(),direction=>{sort=(sort+Step(direction)+3)%3;FillLibrary();}),
+   Item(()=>"Порядок: "+(reverse?"обратный":"прямой"),_=>{reverse=!reverse;FillLibrary();}),
+   Item(()=>FilterText(),direction=>{filter=(filter+Step(direction)+3)%3;keyboard.SetFilter(FilterText());FillLibrary();}),
+   Item(()=>"Перейти к букве: "+(letters.Count>0?letters[letterIndex]:"-"),direction=>{
+    if(letters.Count==0)return;
+    if(direction==0){
+     var hit=libraryOrder.FirstOrDefault(game=>Letter(game)==letters[letterIndex]);
+     popup.Close();
+     if(hit!=null)library.Select(hit.Id);
+    }else letterIndex=(letterIndex+direction+letters.Count)%letters.Count;
+   }),
+   Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;sort=0;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
+  });
+  popup.Open();
   UpdateHints();
  }
  void SelectTab(int index){
@@ -175,14 +206,25 @@ public sealed class MainWindow:Window{
   FillLibrary();
   if(Active?.Current is Game current)OnFocused(current);
  }
+ List<Game> Sort(List<Game> list){
+  var name=StringComparer.CurrentCultureIgnoreCase;
+  IEnumerable<Game> result=sort==1?list.OrderByDescending(item=>item.LastPlayed).ThenBy(item=>item.Name,name):sort==2?list.OrderByDescending(item=>Favorites.Has(item.Id)).ThenBy(item=>item.Name,name):list.OrderBy(item=>item.Name,name);
+  var items=result.ToList();
+  if(reverse)items.Reverse();
+  return items;
+ }
  void FillLibrary(){
   var visible=games.Where(item=>(filter!=1||item.Installed)&&(filter!=2||!item.Installed)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
-  var installed=visible.Where(item=>item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
-  var others=visible.Where(item=>!item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
+  var installed=Sort(visible.Where(item=>item.Installed).ToList());
+  var others=Sort(visible.Where(item=>!item.Installed).ToList());
+  libraryOrder=installed.Concat(others).ToList();
+  letters=libraryOrder.Select(Letter).Distinct().OrderBy(item=>item,StringComparer.CurrentCultureIgnoreCase).ToList();
+  letterIndex=Math.Clamp(letterIndex,0,Math.Max(0,letters.Count-1));
   library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",others)));
   var text="Игр: "+visible.Count;
   if(query.Length>0)text+=" · Поиск: "+query;
   if(filter!=0)text+=" · "+FilterName();
+  if(sort!=0||reverse)text+=" · "+SortName();
   chip.Text=text;
   if(tab==1&&library.Current is Game current)OnFocused(current);
  }
@@ -237,6 +279,15 @@ public sealed class MainWindow:Window{
    else if(code==1||code==6)keyboard.Close();
    return;
   }
+  if(popup.IsOpen){
+   if(code==11)popup.Move(-1);
+   else if(code==12)popup.Move(1);
+   else if(code==13)popup.Act(-1);
+   else if(code==14)popup.Act(1);
+   else if(code==0)popup.Act(0);
+   else if(code==1||code==3||code==6)popup.Close();
+   return;
+  }
   if(menu.IsOpen){
    if(code==11)menu.Move(-1);
    else if(code==12)menu.Move(1);
@@ -256,7 +307,7 @@ public sealed class MainWindow:Window{
    return;
   }
   switch(code){
-   case 3:OpenSearch();break;
+   case 3:if(tab!=2)OpenListMenu();break;
    case 9:SelectTab((tab+2)%3);break;
    case 10:SelectTab((tab+1)%3);break;
    case 11:Active?.Move(0,-1);break;
@@ -271,6 +322,7 @@ public sealed class MainWindow:Window{
   int code=e.Key switch{Key.Left=>13,Key.Right=>14,Key.Up=>11,Key.Down=>12,Key.Enter=>0,Key.Space=>2,Key.Q=>9,Key.E=>10,Key.Back=>1,Key.Tab=>6,Key.F=>3,_=>-1};
   if(e.Key==Key.Escape){
    if(keyboard.IsOpen)keyboard.Close();
+   else if(popup.IsOpen)popup.Close();
    else if(menu.IsOpen)CloseMenu();
    else if(inDetails)CloseDetails();
    else Close();
