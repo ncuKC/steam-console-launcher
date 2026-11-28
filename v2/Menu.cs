@@ -165,6 +165,10 @@ public sealed class SideMenu:Border{
  public async void Activate(){
   var entry=entries[index];
   if(armed!=null&&entry!=armed){ResetPower();status.Text="";}
+  var span=TimeSpan.FromMilliseconds(180);
+  var ease=new BackEase{EasingMode=EasingMode.EaseOut,Amplitude=.5};
+  entry.Scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(.94,1.03,span){EasingFunction=ease});
+  entry.Scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(.94,1.03,span){EasingFunction=ease});
   await entry.Run();
  }
  void Highlight(bool instant){
