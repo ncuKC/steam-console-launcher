@@ -39,7 +39,7 @@ public sealed class MainWindow:Window{
  List<Game> libraryOrder=new();
  List<string> letters=new();
  List<int> sectionIds=new();
- int tab,version,comboTicks,filter,sort,letterIndex,pollTicks,watchTicks,source;
+ int tab,version,comboTicks,filter,sort=1,letterIndex,pollTicks,watchTicks,source;
  bool reverse,watchSeen;
  string? watchId;
  string query="";
@@ -190,7 +190,7 @@ public sealed class MainWindow:Window{
   source=index;
   filter=0;
   query="";
-  sort=0;
+  sort=1;
   reverse=false;
   keyboard.SetFilter(FilterText());
   FillLibrary();
@@ -220,7 +220,7 @@ public sealed class MainWindow:Window{
    }),
    Item(()=>"Звуки: "+(Sound.Enabled?"вкл":"выкл"),_=>Sound.Toggle()),
    Item(()=>"Открыть папку «Свои»",_=>{popup.Close();Stores.OpenOwn();}),
-   Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;source=0;sort=0;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
+   Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;source=0;sort=1;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();})
   });
   popup.Open();
   Appear(popup,0,30);
@@ -275,7 +275,7 @@ public sealed class MainWindow:Window{
   if(source!=0)text+=" · "+StoreNames[source];
   if(query.Length>0)text+=" · Поиск: "+query;
   if(filter!=0)text+=" · "+FilterName();
-  if(sort!=0||reverse)text+=" · "+SortName();
+  if(sort!=1||reverse)text+=" · "+SortName();
   chip.Text=text;
   if(tab==1&&library.Current is Game current)OnFocused(current);
  }

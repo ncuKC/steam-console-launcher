@@ -32,9 +32,7 @@ public static class Library{
      try{
       var fields=Fields(File.ReadAllText(manifest));
       if(fields.TryGetValue("appid",out var id)&&fields.TryGetValue("StateFlags",out var rawFlags)&&int.TryParse(rawFlags,out var flags)&&(flags&4)!=0){
-       long updated=0;
-       if(fields.TryGetValue("LastUpdated",out var rawUpdated))long.TryParse(rawUpdated,out updated);
-       result.Add(new Game(id,fields.TryGetValue("name",out var name)?name:id,true,updated));
+       result.Add(new Game(id,fields.TryGetValue("name",out var name)?name:id,true,0));
       }
      }catch(IOException){}catch(UnauthorizedAccessException){}
     }
@@ -44,6 +42,7 @@ public static class Library{
  }
  public static async Task<List<Game>> Load(){
   var local=await Task.Run(Scan);
+  var steamLast=await Task.Run(Stats.LastPlayedAll);
   var saved=new List<Saved>();
   var file=Path.Combine(Root,"library.json");
   if(File.Exists(file)){
@@ -54,17 +53,23 @@ public static class Library{
   if(File.Exists(playedFile)){
    try{played=JsonSerializer.Deserialize<Dictionary<string,long>>(await File.ReadAllTextAsync(playedFile))??new Dictionary<string,long>();}catch(JsonException){}
   }
+  var savedLast=new Dictionary<string,long>();
+  foreach(var item in saved)savedLast[item.Id]=Math.Max(item.LastPlayed,savedLast.TryGetValue(item.Id,out var before)?before:0);
   var installed=local.Select(item=>item.Id).ToHashSet();
-  var all=saved.Select(item=>new Game(item.Id,item.Name,false,item.LastPlayed)).Concat(local);
+  var all=saved.Select(item=>new Game(item.Id,item.Name,false,0)).Concat(local);
   var steamGames=all
    .Where(item=>item.Id.Length>0&&item.Id!="228980")
    .GroupBy(item=>item.Id)
    .Select(group=>{
-    long last=Math.Max(group.Max(x=>x.LastPlayed),played.TryGetValue(group.Key,out var stamp)?stamp:0);
+    long fromSaved=savedLast.TryGetValue(group.Key,out var savedStamp)?savedStamp:0;
+    long fromPlayed=played.TryGetValue(group.Key,out var playedStamp)?playedStamp:0;
+    long fromSteam=steamLast.TryGetValue(group.Key,out var steamStamp)?steamStamp:0;
+    long last=Math.Max(fromSaved,Math.Max(fromPlayed,fromSteam));
     return new Game(group.Key,group.Last().Name,installed.Contains(group.Key),last);
    })
    .ToList();
   var extra=await Task.Run(Stores.Scan);
+  foreach(var item in extra)Art.Names[item.Id]=item.Name;
   var others=extra.Select(item=>item with{LastPlayed=Math.Max(item.LastPlayed,played.TryGetValue(item.Id,out var lastStamp)?lastStamp:0)});
   return steamGames.Concat(others)
    .OrderByDescending(item=>item.LastPlayed)

@@ -84,6 +84,17 @@ public static class Stats{
    return node;
   }
  }
+ public static Dictionary<string,long> LastPlayedAll(){
+  var map=new Dictionary<string,long>();
+  try{
+   var apps=Apps();
+   if(apps==null)return map;
+   foreach(var pair in apps.Children){
+    if(pair.Value.Children.TryGetValue("LastPlayed",out var value)&&long.TryParse(value.Value,out var stamp)&&stamp>0)map[pair.Key]=stamp;
+   }
+  }catch{}
+  return map;
+ }
  public static Task<PlayInfo?> Get(string id)=>Task.Run(()=>{
   try{
    var apps=Apps();

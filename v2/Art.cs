@@ -6,14 +6,25 @@ namespace ConsoleLauncher;
 public static class Art{
  static readonly HttpClient Web=new(){Timeout=TimeSpan.FromSeconds(12)};
  static readonly SemaphoreSlim Gate=new(4);
+ static readonly SemaphoreSlim MatchGate=new(1);
  static readonly ConcurrentDictionary<string,Lazy<Task<BitmapImage?>>> Cache=new();
  static readonly string[] Hosts={"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"};
+ static Dictionary<string,string>? matches;
+ public static readonly ConcurrentDictionary<string,string> Names=new();
  public static Task<BitmapImage?> Wide(string id)=>Get(id+"_wide",new[]{"capsule_616x353.jpg","header.jpg"},id,600);
- public static Task<BitmapImage?> Hero(string id)=>Get(id+"_hero",new[]{"library_hero.jpg","header.jpg"},id,1600);
+ public static Task<BitmapImage?> Hero(string id)=>Get(id+"_hero2",new[]{"library_hero_2x.jpg","library_hero.jpg"},id,2560);
  public static Task<BitmapImage?> Logo(string id)=>Get(id+"_logo",new[]{"logo.png","library_logo.png"},id,700);
  static Task<BitmapImage?> Get(string key,string[] names,string id,int width){
-  if(id.Length==0||!id.All(char.IsDigit))return Local(key,id,width);
-  return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
+  if(id.Length>0&&id.All(char.IsDigit))return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
+  return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Other(key,names,id,width))).Value;
+ }
+ static async Task<BitmapImage?> Other(string key,string[] names,string id,int width){
+  var own=await Local(key,id,width);
+  if(own!=null)return own;
+  if(!Names.TryGetValue(id,out var name)||name.Length==0)return null;
+  var app=await Match(name);
+  if(app.Length==0)return null;
+  return await Load(key,names,app,width);
  }
  static async Task<BitmapImage?> Local(string key,string id,int width){
   if(key.EndsWith("_logo")||!Stores.ArtPath.TryGetValue(id,out var path))return null;
@@ -21,6 +32,42 @@ public static class Art{
    var bytes=await File.ReadAllBytesAsync(path);
    return await Task.Run(()=>Decode(bytes,width));
   }catch{return null;}
+ }
+ static string Norm(string text)=>new string(text.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+ static async Task<string> Match(string name){
+  var key=Norm(name);
+  if(key.Length==0)return "";
+  await MatchGate.WaitAsync();
+  try{
+   var file=Path.Combine(Library.Root,"steam_match.json");
+   if(matches==null){
+    matches=new Dictionary<string,string>();
+    try{
+     if(File.Exists(file))matches=JsonSerializer.Deserialize<Dictionary<string,string>>(await File.ReadAllTextAsync(file))??matches;
+    }catch{}
+   }
+   if(matches.TryGetValue(key,out var known))return known;
+   string found="";
+   try{
+    var json=await Web.GetStringAsync("https://store.steampowered.com/api/storesearch/?term="+Uri.EscapeDataString(name)+"&l=english&cc=US");
+    using var doc=JsonDocument.Parse(json);
+    if(doc.RootElement.TryGetProperty("items",out var items)&&items.ValueKind==JsonValueKind.Array){
+     foreach(var item in items.EnumerateArray()){
+      var title=item.TryGetProperty("name",out var titleValue)?titleValue.GetString()??"":"";
+      if(Norm(title)==key&&item.TryGetProperty("id",out var idValue)&&idValue.ValueKind==JsonValueKind.Number){
+       found=idValue.GetInt64().ToString();
+       break;
+      }
+     }
+    }
+    matches[key]=found;
+    try{
+     Directory.CreateDirectory(Library.Root);
+     await File.WriteAllTextAsync(file,JsonSerializer.Serialize(matches));
+    }catch{}
+   }catch{}
+   return found;
+  }finally{MatchGate.Release();}
  }
  static BitmapImage Decode(byte[] bytes,int width){
   using var stream=new MemoryStream(bytes);
@@ -49,11 +96,24 @@ public static class Art{
   }catch{}
   return null;
  }
- static async Task<byte[]?> FromStoreApi(string id){
+ static async Task<byte[]?> FromStoreApi(string id,bool big){
   try{
-   var meta=await Web.GetStringAsync("https://store.steampowered.com/api/appdetails?appids="+id+"&filters=basic");
+   var meta=await Web.GetStringAsync("https://store.steampowered.com/api/appdetails?appids="+id);
    using var doc=JsonDocument.Parse(meta);
-   if(doc.RootElement.TryGetProperty(id,out var entry)&&entry.TryGetProperty("data",out var data)&&data.TryGetProperty("header_image",out var image)&&image.GetString() is {Length:>0} url)return await Web.GetByteArrayAsync(url);
+   if(!doc.RootElement.TryGetProperty(id,out var entry)||!entry.TryGetProperty("data",out var data))return null;
+   var urls=new List<string>();
+   if(big){
+    if(data.TryGetProperty("screenshots",out var shots)&&shots.ValueKind==JsonValueKind.Array){
+     foreach(var shot in shots.EnumerateArray().Take(1)){
+      if(shot.TryGetProperty("path_full",out var full)&&full.GetString() is {Length:>0} fullUrl)urls.Add(fullUrl);
+     }
+    }
+    if(data.TryGetProperty("background_raw",out var raw)&&raw.GetString() is {Length:>0} rawUrl)urls.Add(rawUrl);
+   }
+   if(data.TryGetProperty("header_image",out var header)&&header.GetString() is {Length:>0} headerUrl)urls.Add(headerUrl);
+   foreach(var url in urls){
+    try{return await Web.GetByteArrayAsync(url);}catch{}
+   }
   }catch{}
   return null;
  }
@@ -79,8 +139,15 @@ public static class Art{
     }
    }
    if(key.EndsWith("_logo"))return null;
-   byte[]? fallback=FromSteamCache(id,key.EndsWith("_hero")?new[]{"library_hero.jpg","library_header.jpg","header.jpg"}:new[]{"library_header.jpg","header.jpg"});
-   fallback??=await FromStoreApi(id);
+   byte[]? fallback;
+   if(key.Contains("_hero")){
+    fallback=FromSteamCache(id,new[]{"library_hero.jpg"});
+    fallback??=await FromStoreApi(id,true);
+    fallback??=FromSteamCache(id,new[]{"library_header.jpg","header.jpg"});
+   }else{
+    fallback=FromSteamCache(id,new[]{"library_header.jpg","header.jpg"});
+    fallback??=await FromStoreApi(id,false);
+   }
    if(fallback!=null){
     try{
      var bytes=fallback;
