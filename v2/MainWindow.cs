@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
  static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
@@ -31,8 +32,9 @@ public sealed class MainWindow:Window{
  List<Game> games=new();
  List<Game> libraryOrder=new();
  List<string> letters=new();
- int tab,version,comboTicks,filter,sort,letterIndex;
- bool reverse;
+ int tab,version,comboTicks,filter,sort,letterIndex,pollTicks,watchTicks;
+ bool reverse,watchSeen;
+ string? watchId;
  string query="";
  bool inDetails,favChanged;
  Game? detailGame;
@@ -275,7 +277,21 @@ public sealed class MainWindow:Window{
  void Launch(Game? game){
   if(game==null)return;
   Library.RecordPlayed(game.Id);
-  try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{}
+  try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{return;}
+  if(game.Installed){
+   watchId=game.Id;
+   watchSeen=false;
+   watchTicks=0;
+   pollTicks=0;
+  }
+ }
+ async void ReturnFromGame(){
+  WindowState=WindowState.Maximized;
+  Activate();
+  Topmost=true;
+  Topmost=false;
+  games=await Library.Load();
+  FillShelves();
  }
  void Press(int code){
   if(keyboard.IsOpen){
@@ -346,5 +362,17 @@ public sealed class MainWindow:Window{
   clock.Text=DateTime.Now.ToString("HH:mm");
   foreach(var code in pad.Tick(IsActive))Press(code);
   if(pad.ComboHeld()){comboTicks++;if(comboTicks>45)Close();}else comboTicks=0;
+  if(watchId!=null&&++pollTicks>=30){
+   pollTicks=0;
+   var raw=Registry.GetValue(@"HKEY_CURRENT_USER\Software\Valve\Steam","RunningAppID",0);
+   int running=raw is int value?value:0;
+   if(running.ToString()==watchId){
+    if(!watchSeen){watchSeen=true;WindowState=WindowState.Minimized;}
+   }else if(watchSeen){
+    watchId=null;
+    watchSeen=false;
+    ReturnFromGame();
+   }else if(++watchTicks>90)watchId=null;
+  }
  }
 }
