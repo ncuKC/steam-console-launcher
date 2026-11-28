@@ -6,8 +6,10 @@ using System.Windows.Media;
 using System.Windows.Threading;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
+ static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
  readonly Image backdrop=new(){Stretch=Stretch.UniformToFill,Opacity=.55};
- readonly Shelves home=new(),library=new();
+ readonly Sections sections=new();
+ readonly Shelves library=new();
  readonly Grid store=new(){Visibility=Visibility.Collapsed};
  readonly Grid details=new(){Visibility=Visibility.Collapsed,Background=Ui.B("#0B0F15")};
  readonly Image detailArt=new(){Stretch=Stretch.UniformToFill,Opacity=.7};
@@ -34,7 +36,7 @@ public sealed class MainWindow:Window{
  string query="";
  bool inDetails,favChanged;
  Game? detailGame;
- Shelves? Active=>tab==0?home:tab==1?library:null;
+ Shelves? Active=>tab==1?library:null;
  static TextBlock Hint(string text)=>new(){Text=text,FontSize=18,Foreground=Ui.B("#8F98A0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,10,0)};
  static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
   for(int i=0;i<list.Count;i+=5)yield return (i==0?title:"",list.Skip(i).Take(5).ToList());
@@ -42,6 +44,7 @@ public sealed class MainWindow:Window{
  static (Func<string>,Action<int>) Item(Func<string> text,Action<int> act)=>(text,act);
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
+ static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
  public MainWindow(){
   Title="PLAY";
   WindowStyle=WindowStyle.None;
@@ -82,7 +85,7 @@ public sealed class MainWindow:Window{
   var pages=new Grid();
   Grid.SetRow(pages,1);
   layout.Children.Add(pages);
-  pages.Children.Add(home);
+  pages.Children.Add(sections);
   pages.Children.Add(library);
   pages.Children.Add(store);
   pages.Children.Add(chip);
@@ -99,9 +102,9 @@ public sealed class MainWindow:Window{
   canvas.Children.Add(popup);
   menu=new SideMenu(CloseMenu,()=>Close());
   canvas.Children.Add(menu);
-  home.Focused+=OnFocused;
+  sections.Focused+=game=>{if(game!=null)OnFocused(game);};
+  sections.Opened+=OpenSection;
   library.Focused+=OnFocused;
-  home.Opened+=OpenDetails;
   library.Opened+=OpenDetails;
   PreviewKeyDown+=OnKey;
   Loaded+=async(_,_)=>{
@@ -140,19 +143,29 @@ public sealed class MainWindow:Window{
   else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
   else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
   else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Раздел"));
-  else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("≡","Меню"),("LB/RB","Раздел"));
+  else if(tab==0)SetHints(("A","Открыть"),("≡","Меню"),("LB/RB","Вкладка"));
+  else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("B","Разделы"),("≡","Меню"));
  }
  void CloseMenu(){
   menu.Close();
   UpdateHints();
  }
- string FilterName()=>filter==1?"Установленные":filter==2?"Не установленные":"Все";
+ string FilterName()=>FilterNames[filter];
  string FilterText()=>"Фильтр: "+FilterName();
  string SortName()=>sort==1?"последний запуск":sort==2?"избранные сверху":"название";
  void CycleFilter(){
-  filter=(filter+1)%3;
+  filter=(filter+1)%FilterNames.Length;
   keyboard.SetFilter(FilterText());
   FillLibrary();
+ }
+ void OpenSection(int index){
+  filter=index;
+  query="";
+  sort=index==4?1:0;
+  reverse=false;
+  keyboard.SetFilter(FilterText());
+  FillLibrary();
+  SelectTab(1);
  }
  void OpenSearch(){
   if(tab!=1)SelectTab(1);
@@ -165,7 +178,7 @@ public sealed class MainWindow:Window{
    Item(()=>"Поиск: "+(query.Length>0?query:"не задан"),_=>{popup.Close();OpenSearch();}),
    Item(()=>"Сортировка: "+SortName(),direction=>{sort=(sort+Step(direction)+3)%3;FillLibrary();}),
    Item(()=>"Порядок: "+(reverse?"обратный":"прямой"),_=>{reverse=!reverse;FillLibrary();}),
-   Item(()=>FilterText(),direction=>{filter=(filter+Step(direction)+3)%3;keyboard.SetFilter(FilterText());FillLibrary();}),
+   Item(()=>FilterText(),direction=>{filter=(filter+Step(direction)+FilterNames.Length)%FilterNames.Length;keyboard.SetFilter(FilterText());FillLibrary();}),
    Item(()=>"Перейти к букве: "+(letters.Count>0?letters[letterIndex]:"-"),direction=>{
     if(letters.Count==0)return;
     if(direction==0){
@@ -185,26 +198,23 @@ public sealed class MainWindow:Window{
    tabBorders[i].BorderBrush=i==tab?Ui.B("#66C0F4"):Brushes.Transparent;
    ((TextBlock)tabBorders[i].Child).Foreground=i==tab?Brushes.White:Ui.B("#8F98A0");
   }
-  home.Visibility=tab==0?Visibility.Visible:Visibility.Collapsed;
+  sections.Visibility=tab==0?Visibility.Visible:Visibility.Collapsed;
   library.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   store.Visibility=tab==2?Visibility.Visible:Visibility.Collapsed;
   chip.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
-  if(Active?.Current is Game current)OnFocused(current);
+  if(tab==0)sections.Refocus();
+  else if(tab==1&&library.Current is Game current)OnFocused(current);
   UpdateHints();
  }
  void FillShelves(){
-  var favorites=games.Where(item=>Favorites.Has(item.Id)).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
-  var recent=games.Where(item=>item.Installed&&item.LastPlayed>0).OrderByDescending(item=>item.LastPlayed).Take(12).ToList();
-  var installed=games.Where(item=>item.Installed).OrderBy(item=>item.Name,StringComparer.CurrentCultureIgnoreCase).ToList();
-  var others=games.Where(item=>!item.Installed).OrderByDescending(item=>item.LastPlayed).ThenBy(item=>item.Name).ToList();
-  var rows=new List<(string,List<Game>)>();
-  if(favorites.Count>0)rows.Add(("Избранное",favorites));
-  rows.Add(("Недавние",recent));
-  rows.Add(("Установленные игры",installed));
-  rows.Add(("Ещё в коллекции",others.Take(24).ToList()));
-  home.SetRows(rows);
+  var items=new List<(string,int,Game?)>();
+  for(int i=0;i<FilterNames.Length;i++){
+   var list=games.Where(item=>Matches(item,i)).ToList();
+   if(i==4)list=list.OrderByDescending(item=>item.LastPlayed).ToList();
+   items.Add((FilterNames[i],list.Count,list.FirstOrDefault()));
+  }
+  sections.Set(items);
   FillLibrary();
-  if(Active?.Current is Game current)OnFocused(current);
  }
  List<Game> Sort(List<Game> list){
   var name=StringComparer.CurrentCultureIgnoreCase;
@@ -214,7 +224,7 @@ public sealed class MainWindow:Window{
   return items;
  }
  void FillLibrary(){
-  var visible=games.Where(item=>(filter!=1||item.Installed)&&(filter!=2||!item.Installed)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
+  var visible=games.Where(item=>Matches(item,filter)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
   var installed=Sort(visible.Where(item=>item.Installed).ToList());
   var others=Sort(visible.Where(item=>!item.Installed).ToList());
   libraryOrder=installed.Concat(others).ToList();
@@ -307,14 +317,15 @@ public sealed class MainWindow:Window{
    return;
   }
   switch(code){
+   case 1:if(tab==1)SelectTab(0);break;
    case 3:if(tab!=2)OpenListMenu();break;
    case 9:SelectTab((tab+2)%3);break;
    case 10:SelectTab((tab+1)%3);break;
    case 11:Active?.Move(0,-1);break;
    case 12:Active?.Move(0,1);break;
-   case 13:Active?.Move(-1,0);break;
-   case 14:Active?.Move(1,0);break;
-   case 0:Active?.Open();break;
+   case 13:if(tab==0)sections.Move(-1);else Active?.Move(-1,0);break;
+   case 14:if(tab==0)sections.Move(1);else Active?.Move(1,0);break;
+   case 0:if(tab==0)sections.Open();else Active?.Open();break;
    case 2:Launch(Active?.Current);break;
   }
  }
