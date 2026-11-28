@@ -70,7 +70,7 @@ public sealed class MainWindow:Window{
  readonly Border stateFill=new(){Height=6,CornerRadius=new CornerRadius(3),Background=Ui.B("#66C0F4"),RenderTransformOrigin=new Point(0,.5)};
  readonly ScaleTransform stateScale=new(0,1);
  readonly TextBlock detailXLabel=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)};
- Border? xButton;
+ Border? xButton,playButton,favButton,backButton;
  readonly TextBlock detailDesc=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxHeight=140,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,22,0,0),Visibility=Visibility.Collapsed};
  readonly TextBlock detailPlay=new(){FontSize=26,FontWeight=FontWeights.Bold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(14,0,0,0)};
  readonly TextBlock detailFavLabel=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)};
@@ -95,7 +95,7 @@ public sealed class MainWindow:Window{
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
  int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken,galleryIndex,shotToken,fastTicks;
- bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip,returning,detailUpdate;
+ bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip,returning,detailUpdate,dialogPending;
  string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
  DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now,noteUntil=DateTime.MinValue;
@@ -114,6 +114,18 @@ public sealed class MainWindow:Window{
   return new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(18,12,18,14),Margin=margin,Background=Ui.B("#1FFFFFFF"),Child=panel};
  }
  static Border Soft(UIElement child)=>new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(20,12,26,12),Margin=new Thickness(0,0,16,0),Background=Ui.B("#26FFFFFF"),Child=child};
+ static Border Tappable(Border element){
+  element.RenderTransformOrigin=new Point(.5,.5);
+  element.RenderTransform=new ScaleTransform(1,1);
+  return element;
+ }
+ static void Tap(Border? element){
+  if(element==null||element.RenderTransform is not ScaleTransform scale)return;
+  var span=TimeSpan.FromMilliseconds(200);
+  var ease=new BackEase{EasingMode=EasingMode.EaseOut,Amplitude=.6};
+  scale.BeginAnimation(ScaleTransform.ScaleXProperty,new DoubleAnimation(.9,1,span){EasingFunction=ease});
+  scale.BeginAnimation(ScaleTransform.ScaleYProperty,new DoubleAnimation(.9,1,span){EasingFunction=ease});
+ }
  static void Rise(UIElement element,int delay){
   var move=new TranslateTransform(0,26);
   element.BeginAnimation(UIElement.OpacityProperty,null);
@@ -449,21 +461,24 @@ public sealed class MainWindow:Window{
   var play=new StackPanel{Orientation=Orientation.Horizontal};
   play.Children.Add(badgeA.Box);
   play.Children.Add(detailPlay);
-  buttons.Children.Add(new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(26,12,34,12),Margin=new Thickness(0,0,16,0),Background=new LinearGradientBrush(Hex("#6FCB36"),Hex("#3F8A1F"),90),Child=play});
+  playButton=Tappable(new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(26,12,34,12),Margin=new Thickness(0,0,16,0),Background=new LinearGradientBrush(Hex("#6FCB36"),Hex("#3F8A1F"),90),Child=play});
+  buttons.Children.Add(playButton);
   var update=new StackPanel{Orientation=Orientation.Horizontal};
   update.Children.Add(badgeX.Box);
   update.Children.Add(detailXLabel);
-  xButton=Soft(update);
+  xButton=Tappable(Soft(update));
   xButton.Visibility=Visibility.Collapsed;
   buttons.Children.Add(xButton);
   var fav=new StackPanel{Orientation=Orientation.Horizontal};
   fav.Children.Add(badgeY.Box);
   fav.Children.Add(detailFavLabel);
-  buttons.Children.Add(Soft(fav));
+  favButton=Tappable(Soft(fav));
+  buttons.Children.Add(favButton);
   var back=new StackPanel{Orientation=Orientation.Horizontal};
   back.Children.Add(badgeB.Box);
   back.Children.Add(new TextBlock{Text="Назад",FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)});
-  buttons.Children.Add(Soft(back));
+  backButton=Tappable(Soft(back));
+  buttons.Children.Add(backButton);
   detailBody.Children.Add(buttons);
   detailCard.Child=detailBody;
   detailCard.RenderTransform=cardShift;
@@ -554,8 +569,15 @@ public sealed class MainWindow:Window{
   Dim(true);
   UpdateHints();
  }
+ void SteamDialog(string verb,string id){
+  SteamLink(verb,id);
+  dialogPending=true;
+  graceUntil=DateTime.Now.AddSeconds(60);
+  Topmost=false;
+  Native.Lower(this);
+ }
  void UpdateGame(Game game){
-  SteamLink("install",game.Id);
+  SteamDialog("install",game.Id);
  }
  void OpenPage(Game game){
   if(game.Store!="Steam")return;
@@ -583,13 +605,13 @@ public sealed class MainWindow:Window{
   },"\ue734"));
   if(game.Store=="Steam"&&game.Installed){
    items.Add(Item(()=>"Восстановить файлы (проверка целостности)",_=>{
-    SteamLink("validate",game.Id);
+    SteamDialog("validate",game.Id);
     popup.Close();
    },"\ue73e"));
    items.Add(Item(()=>armedUninstall==game.Id?"Удалить игру: нажмите ещё раз":"Удалить игру",_=>{
     if(armedUninstall==game.Id){
      armedUninstall=null;
-     SteamLink("uninstall",game.Id);
+     SteamDialog("uninstall",game.Id);
      popup.Close();
     }else armedUninstall=game.Id;
    },"\ue74d"));
@@ -894,15 +916,28 @@ public sealed class MainWindow:Window{
    }else graceUntil=DateTime.Now.AddHours(6);
    return;
   }
-  try{Process.Start(new ProcessStartInfo((game.Installed?"steam://rungameid/":"steam://install/")+game.Id){UseShellExecute=true});}catch{return;}
+  if(!game.Installed){SteamDialog("install",game.Id);return;}
+  try{Process.Start(new ProcessStartInfo("steam://rungameid/"+game.Id){UseShellExecute=true});}catch{return;}
   lastSteamId=game.Id;
   syncUntil=DateTime.Now.AddSeconds(90);
-  if(game.Installed){
-   Topmost=false;
-   watchId=game.Id;
-   watchSeen=false;
-   watchTicks=0;
-  }
+  Topmost=false;
+  watchId=game.Id;
+  watchSeen=false;
+  watchTicks=0;
+ }
+ async void RefreshGames(){
+  try{
+   games=await Library.Load();
+   FillShelves();
+   if(inDetails&&detailGame!=null){
+    var fresh=games.FirstOrDefault(item=>item.Id==detailGame.Id);
+    if(fresh!=null){
+     detailGame=fresh;
+     ShowDetailState(fresh);
+     ShowLocal(fresh);
+    }
+   }
+  }catch{}
  }
  async void ReturnFromGame(){
   if(returning)return;
@@ -985,6 +1020,10 @@ public sealed class MainWindow:Window{
   }else{
    if(!Topmost)Topmost=true;
    ShowAgain();
+   if(dialogPending){
+    dialogPending=false;
+    RefreshGames();
+   }
    if(!userMinimized){
     if(WindowState==WindowState.Minimized)WindowState=WindowState.Maximized;
     Native.Raise(this);
@@ -1027,15 +1066,25 @@ public sealed class MainWindow:Window{
   }
   if(code==6){menu.Open();Dim(true);UpdateHints();return;}
   if(inDetails){
-   if(code==1)CloseDetails();
-   else if(code==0)Launch(detailGame);
+   if(code==1){
+    Tap(backButton);
+    CloseDetails();
+   }
+   else if(code==0){
+    Tap(playButton);
+    Launch(detailGame);
+   }
    else if(code==2){
     if(detailGame!=null&&detailGame.Store=="Steam"){
+     Tap(xButton);
      if(detailUpdate)UpdateGame(detailGame);
      else OpenPage(detailGame);
     }
    }
-   else if(code==3&&detailGame!=null)OpenActions(detailGame);
+   else if(code==3&&detailGame!=null){
+    Tap(favButton);
+    OpenActions(detailGame);
+   }
    else if(code==9)MoveShot(-1);
    else if(code==10)MoveShot(1);
    return;
