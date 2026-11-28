@@ -7,13 +7,150 @@ public static class Art{
  static readonly HttpClient Web=new(){Timeout=TimeSpan.FromSeconds(12)};
  static readonly SemaphoreSlim Gate=new(4);
  static readonly SemaphoreSlim MatchGate=new(1);
+ static readonly SemaphoreSlim GridGate=new(1);
  static readonly ConcurrentDictionary<string,Lazy<Task<BitmapImage?>>> Cache=new();
+ static readonly ConcurrentDictionary<string,Lazy<Task<List<BitmapImage>>>> ArtCache=new();
  static readonly string[] Hosts={"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"};
  static Dictionary<string,string>? matches;
+ static Dictionary<string,string>? gridIds;
+ static string apiKey="";
  public static readonly ConcurrentDictionary<string,string> Names=new();
+ public static bool HasKey=>apiKey.Length>0;
+ static string KeyFile=>Path.Combine(Library.Root,"steamgriddb.key");
+ public static void LoadKey(){
+  try{
+   if(File.Exists(KeyFile))apiKey=File.ReadAllText(KeyFile).Trim();
+  }catch{}
+ }
+ public static void SetKey(string value){
+  apiKey=value.Trim();
+  try{
+   Directory.CreateDirectory(Library.Root);
+   File.WriteAllText(KeyFile,apiKey);
+  }catch{}
+  ArtCache.Clear();
+ }
  public static Task<BitmapImage?> Wide(string id)=>Get(id+"_wide",new[]{"capsule_616x353.jpg","header.jpg"},id,600);
  public static Task<BitmapImage?> Hero(string id)=>Get(id+"_hero2",new[]{"library_hero_2x.jpg","library_hero.jpg"},id,2560);
  public static Task<BitmapImage?> Logo(string id)=>Get(id+"_logo",new[]{"logo.png","library_logo.png"},id,700);
+ public static Task<List<BitmapImage>> Arts(string id)=>ArtCache.GetOrAdd(id,_=>new Lazy<Task<List<BitmapImage>>>(()=>LoadArts(id))).Value;
+ static async Task<string> GridGet(string path){
+  try{
+   using var request=new HttpRequestMessage(HttpMethod.Get,"https://www.steamgriddb.com/api/v2"+path);
+   request.Headers.Authorization=new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer",apiKey);
+   using var response=await Web.SendAsync(request);
+   if(!response.IsSuccessStatusCode)return "";
+   return await response.Content.ReadAsStringAsync();
+  }catch{return "";}
+ }
+ static async Task<string> GridGame(string id){
+  bool steam=id.Length>0&&id.All(char.IsDigit);
+  string name="";
+  if(!steam){
+   if(!Names.TryGetValue(id,out var known0)||known0.Length==0)return "";
+   name=known0;
+  }
+  var key=steam?"steam:"+id:"name:"+Norm(name);
+  await GridGate.WaitAsync();
+  try{
+   var file=Path.Combine(Library.Root,"sgdb_ids.json");
+   if(gridIds==null){
+    gridIds=new Dictionary<string,string>();
+    try{
+     if(File.Exists(file))gridIds=JsonSerializer.Deserialize<Dictionary<string,string>>(await File.ReadAllTextAsync(file))??gridIds;
+    }catch{}
+   }
+   if(gridIds.TryGetValue(key,out var known)&&known.Length>0)return known;
+   string found="";
+   try{
+    if(steam){
+     var json=await GridGet("/games/steam/"+id);
+     if(json.Length>0){
+      using var doc=JsonDocument.Parse(json);
+      if(doc.RootElement.TryGetProperty("data",out var data)&&data.TryGetProperty("id",out var idValue)&&idValue.ValueKind==JsonValueKind.Number)found=idValue.GetInt64().ToString();
+     }
+    }else{
+     var json=await GridGet("/search/autocomplete/"+Uri.EscapeDataString(name));
+     if(json.Length>0){
+      using var doc=JsonDocument.Parse(json);
+      if(doc.RootElement.TryGetProperty("data",out var data)&&data.ValueKind==JsonValueKind.Array){
+       foreach(var item in data.EnumerateArray()){
+        var title=item.TryGetProperty("name",out var titleValue)?titleValue.GetString()??"":"";
+        if(Norm(title)==Norm(name)&&item.TryGetProperty("id",out var itemId)&&itemId.ValueKind==JsonValueKind.Number){
+         found=itemId.GetInt64().ToString();
+         break;
+        }
+       }
+      }
+     }
+    }
+   }catch{}
+   if(found.Length>0){
+    gridIds[key]=found;
+    try{
+     Directory.CreateDirectory(Library.Root);
+     await File.WriteAllTextAsync(file,JsonSerializer.Serialize(gridIds));
+    }catch{}
+   }
+   return found;
+  }finally{GridGate.Release();}
+ }
+ static async Task<List<string>> GridHeroes(string gid){
+  var file=Path.Combine(Library.Root,"sgdb",gid+".json");
+  try{
+   if(File.Exists(file)){
+    var cached=JsonSerializer.Deserialize<List<string>>(await File.ReadAllTextAsync(file));
+    if(cached!=null&&cached.Count>0)return cached;
+   }
+  }catch{}
+  var urls=new List<string>();
+  try{
+   var json=await GridGet("/heroes/game/"+gid+"?dimensions=1920x620,3840x1240&types=static&nsfw=false&humor=false");
+   if(json.Length>0){
+    using var doc=JsonDocument.Parse(json);
+    if(doc.RootElement.TryGetProperty("data",out var data)&&data.ValueKind==JsonValueKind.Array){
+     foreach(var item in data.EnumerateArray()){
+      if(urls.Count>=4)break;
+      if(item.TryGetProperty("url",out var url)&&url.GetString() is {Length:>0} link)urls.Add(link);
+     }
+    }
+   }
+   if(urls.Count>0){
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    await File.WriteAllTextAsync(file,JsonSerializer.Serialize(urls));
+   }
+  }catch{}
+  return urls;
+ }
+ static async Task<BitmapImage?> ArtImage(string tag,int index,string url){
+  await Gate.WaitAsync();
+  try{
+   var folder=Path.Combine(Library.Root,"artwork");
+   var file=Path.Combine(folder,tag+"_"+index+".bin");
+   try{
+    if(File.Exists(file)){
+     var saved=await File.ReadAllBytesAsync(file);
+     return await Task.Run(()=>Decode(saved,2560));
+    }
+    var data=await Web.GetByteArrayAsync(url);
+    var image=await Task.Run(()=>Decode(data,2560));
+    try{Directory.CreateDirectory(folder);await File.WriteAllBytesAsync(file,data);}catch{}
+    return image;
+   }catch{return null;}
+  }finally{Gate.Release();}
+ }
+ static async Task<List<BitmapImage>> LoadArts(string id){
+  var list=new List<BitmapImage>();
+  if(!HasKey)return list;
+  var gid=await GridGame(id);
+  if(gid.Length==0)return list;
+  var urls=await GridHeroes(gid);
+  for(int i=0;i<urls.Count;i++){
+   var image=await ArtImage("sgdb_"+gid,i,urls[i]);
+   if(image!=null)list.Add(image);
+  }
+  return list;
+ }
  static Task<BitmapImage?> Get(string key,string[] names,string id,int width){
   if(id.Length>0&&id.All(char.IsDigit))return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
   return Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Other(key,names,id,width))).Value;
@@ -102,14 +239,7 @@ public static class Art{
    using var doc=JsonDocument.Parse(meta);
    if(!doc.RootElement.TryGetProperty(id,out var entry)||!entry.TryGetProperty("data",out var data))return null;
    var urls=new List<string>();
-   if(big){
-    if(data.TryGetProperty("screenshots",out var shots)&&shots.ValueKind==JsonValueKind.Array){
-     foreach(var shot in shots.EnumerateArray().Take(1)){
-      if(shot.TryGetProperty("path_full",out var full)&&full.GetString() is {Length:>0} fullUrl)urls.Add(fullUrl);
-     }
-    }
-    if(data.TryGetProperty("background_raw",out var raw)&&raw.GetString() is {Length:>0} rawUrl)urls.Add(rawUrl);
-   }
+   if(big&&data.TryGetProperty("background_raw",out var raw)&&raw.GetString() is {Length:>0} rawUrl)urls.Add(rawUrl);
    if(data.TryGetProperty("header_image",out var header)&&header.GetString() is {Length:>0} headerUrl)urls.Add(headerUrl);
    foreach(var url in urls){
     try{return await Web.GetByteArrayAsync(url);}catch{}
