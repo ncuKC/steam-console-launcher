@@ -35,7 +35,7 @@ public static class Stores{
     if(main.Length>0&&main!=app)continue;
     if(location.Length==0||!Directory.Exists(location))continue;
     var path=space.Length>0&&item.Length>0?space+"%3A"+item+"%3A"+app:app;
-    list.Add(new Game("epic_"+Safe(app),name,true,0,"Epic Games","com.epicgames.launcher://apps/"+path+"?action=launch&silent=true","",location));
+    list.Add(new Game("epic_"+Safe(app),name,true,0,"Epic Games","com.epicgames.launcher://apps/"+path+"?action=launch&silent=true","",location,location));
    }catch{}
   }
   return list;
@@ -57,10 +57,24 @@ public static class Stores{
     if(name.Length==0||exe.Length==0||depends.Length>0)continue;
     if(!Path.IsPathRooted(exe))exe=Path.Combine(path,exe);
     if(!File.Exists(exe))continue;
-    list.Add(new Game("gog_"+Safe(id),name,true,0,"GOG",exe,args,path));
+    list.Add(new Game("gog_"+Safe(id),name,true,0,"GOG",exe,args,path,path));
    }catch{}
   }
   return list;
+ }
+ static bool IsSystemFolder(string folder){
+  var windows=Environment.GetFolderPath(Environment.SpecialFolder.Windows);
+  return folder.Length<=3||folder.StartsWith(windows,StringComparison.OrdinalIgnoreCase);
+ }
+ static string ShortcutTarget(string path){
+  try{
+   var type=Type.GetTypeFromProgID("WScript.Shell");
+   if(type==null)return "";
+   dynamic shell=Activator.CreateInstance(type)!;
+   dynamic link=shell.CreateShortcut(path);
+   string target=link.TargetPath;
+   return target??"";
+  }catch{return "";}
  }
  static List<Game> Own(){
   var list=new List<Game>();
@@ -75,7 +89,17 @@ public static class Stores{
     var image=Path.Combine(OwnDir,name+imageExt);
     if(File.Exists(image)){ArtPath[id]=image;break;}
    }
-   list.Add(new Game(id,name,true,0,"Свои",file,"",OwnDir));
+   string watch="";
+   try{
+    string? folder=null;
+    if(ext==".exe")folder=Path.GetDirectoryName(file);
+    else if(ext==".lnk"){
+     var target=ShortcutTarget(file);
+     if(target.Length>0&&File.Exists(target))folder=Path.GetDirectoryName(target);
+    }
+    if(!string.IsNullOrEmpty(folder)&&!IsSystemFolder(folder))watch=folder;
+   }catch{}
+   list.Add(new Game(id,name,true,0,"Свои",file,"",OwnDir,watch));
   }
   return list;
  }

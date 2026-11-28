@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
-public sealed record Game(string Id,string Name,bool Installed,long LastPlayed,string Store="Steam",string Launch="",string Args="",string Dir="");
+public sealed record Game(string Id,string Name,bool Installed,long LastPlayed,string Store="Steam",string Launch="",string Args="",string Dir="",string Watch="");
 public static class Library{
  public static readonly string Root=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"SteamConsoleLauncher");
  sealed class Saved{public string Id{get;set;}="";public string Name{get;set;}="";public long LastPlayed{get;set;}}
@@ -69,6 +69,7 @@ public static class Library{
    })
    .ToList();
   var extra=await Task.Run(Stores.Scan);
+  foreach(var item in steamGames)Art.Names[item.Id]=item.Name;
   foreach(var item in extra)Art.Names[item.Id]=item.Name;
   var others=extra.Select(item=>item with{LastPlayed=Math.Max(item.LastPlayed,played.TryGetValue(item.Id,out var lastStamp)?lastStamp:0)});
   return steamGames.Concat(others)
