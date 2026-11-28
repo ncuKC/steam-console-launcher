@@ -47,14 +47,20 @@ public sealed class MainWindow:Window{
  readonly TranslateTransform cardShift=new(-70,0);
  readonly StackPanel detailBody=new();
  readonly Border statusChip=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Margin=new Thickness(0,0,10,0)};
- readonly Border favChip=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Background=Ui.B("#CC8A6D1B"),Visibility=Visibility.Collapsed,Child=new TextBlock{Text="★ ИЗБРАННОЕ",FontSize=16,FontWeight=FontWeights.Bold,Foreground=Ui.B("#FFE08A")}};
+ readonly Border favChip=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Margin=new Thickness(0,0,10,0),Background=Ui.B("#CC8A6D1B"),Visibility=Visibility.Collapsed,Child=new TextBlock{Text="★ ИЗБРАННОЕ",FontSize=16,FontWeight=FontWeights.Bold,Foreground=Ui.B("#FFE08A")}};
+ readonly Border padChip=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Visibility=Visibility.Collapsed};
+ readonly TextBlock detailPad=new(){FontSize=16,FontWeight=FontWeights.Bold};
  readonly TextBlock detailStatus=new(){FontSize=16,FontWeight=FontWeights.Bold};
  readonly TextBlock detailStore=new(){FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#C6D4DF")};
  readonly TextBlock detailTitle=new(){FontSize=64,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,Margin=new Thickness(0,18,0,0)};
  readonly TextBlock detailMeta=new(){FontSize=22,Foreground=Ui.B("#9FB3C8"),Margin=new Thickness(0,6,0,0),Visibility=Visibility.Collapsed};
  readonly Grid detailTiles=new(){Margin=new Thickness(0,24,0,0)};
+ readonly Grid detailTiles2=new(){Margin=new Thickness(0,12,0,0)};
  readonly TextBlock detailStats=new(){FontSize=26,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly TextBlock detailSync=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap};
+ readonly TextBlock detailLast=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
+ readonly TextBlock detailSize=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
+ readonly TextBlock detailState=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly TextBlock detailDesc=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxHeight=140,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,22,0,0),Visibility=Visibility.Collapsed};
  readonly TextBlock detailPlay=new(){FontSize=26,FontWeight=FontWeights.Bold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(14,0,0,0)};
  readonly TextBlock detailFavLabel=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)};
@@ -141,6 +147,15 @@ public sealed class MainWindow:Window{
   if(info==null)return "нет данных";
   int minutes=info.Minutes;
   return minutes<=0?"ещё не играли":minutes<60?minutes+" мин":(minutes/60)+" ч "+(minutes%60)+" мин";
+ }
+ static string LastPlayedText(long unix){
+  if(unix<=0)return "ещё не запускали";
+  var when=DateTimeOffset.FromUnixTimeSeconds(unix).LocalDateTime;
+  int days=(DateTime.Today-when.Date).Days;
+  if(days<=0)return "сегодня, "+when.ToString("HH:mm");
+  if(days==1)return "вчера";
+  if(days<30)return days+" дн. назад";
+  return when.ToString("dd.MM.yyyy");
  }
  static UIElement ControllerLogo(){
   var canvas=new Canvas{Width=200,Height=140};
@@ -375,6 +390,8 @@ public sealed class MainWindow:Window{
   chips.Children.Add(statusChip);
   chips.Children.Add(new Border{CornerRadius=new CornerRadius(14),Padding=new Thickness(14,5,14,5),Margin=new Thickness(0,0,10,0),Background=Ui.B("#26FFFFFF"),Child=detailStore});
   chips.Children.Add(favChip);
+  padChip.Child=detailPad;
+  chips.Children.Add(padChip);
   detailBody.Children.Add(chips);
   detailBody.Children.Add(detailTitle);
   detailBody.Children.Add(detailMeta);
@@ -386,6 +403,18 @@ public sealed class MainWindow:Window{
   detailTiles.Children.Add(timeTile);
   detailTiles.Children.Add(syncTile);
   detailBody.Children.Add(detailTiles);
+  detailTiles2.ColumnDefinitions.Add(new ColumnDefinition());
+  detailTiles2.ColumnDefinitions.Add(new ColumnDefinition());
+  detailTiles2.ColumnDefinitions.Add(new ColumnDefinition());
+  var lastTile=Tile("ПОСЛЕДНИЙ ЗАПУСК",detailLast,new Thickness(0,0,8,0));
+  var sizeTile=Tile("РАЗМЕР",detailSize,new Thickness(4,0,4,0));
+  var stateTile=Tile("СОСТОЯНИЕ",detailState,new Thickness(8,0,0,0));
+  Grid.SetColumn(sizeTile,1);
+  Grid.SetColumn(stateTile,2);
+  detailTiles2.Children.Add(lastTile);
+  detailTiles2.Children.Add(sizeTile);
+  detailTiles2.Children.Add(stateTile);
+  detailBody.Children.Add(detailTiles2);
   detailBody.Children.Add(detailDesc);
   var buttons=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,30,0,0)};
   var play=new StackPanel{Orientation=Orientation.Horizontal};
@@ -593,6 +622,33 @@ public sealed class MainWindow:Window{
   badgeB.Text.Text=Controller.Label("B");
   badgeB.Box.BorderBrush=Controller.Tint("B");
  }
+ void ShowLocal(Game game){
+  var local=Extra.Local(game.Id);
+  detailSize.Text=local?.Size??"—";
+  detailState.Text=local?.State??"—";
+  detailState.Foreground=Ui.B(local?.Tone??"#C6D4DF");
+ }
+ async void LoadPadChip(Game game){
+  padChip.Visibility=Visibility.Collapsed;
+  var support=await Extra.ControllerSupport(game.Id);
+  if(!inDetails||detailGame!=game)return;
+  if(support=="full"){
+   detailPad.Text="ГЕЙМПАД: ПОЛНАЯ ПОДДЕРЖКА";
+   detailPad.Foreground=Ui.B("#C8F59B");
+   padChip.Background=Ui.B("#CC3E7A22");
+   padChip.Visibility=Visibility.Visible;
+  }else if(support=="partial"){
+   detailPad.Text="ГЕЙМПАД: ЧАСТИЧНАЯ ПОДДЕРЖКА";
+   detailPad.Foreground=Ui.B("#FFE08A");
+   padChip.Background=Ui.B("#CC8A6D1B");
+   padChip.Visibility=Visibility.Visible;
+  }else if(support=="none"){
+   detailPad.Text="ГЕЙМПАД: НЕ ЗАЯВЛЕНА";
+   detailPad.Foreground=Ui.B("#FFB3B3");
+   padChip.Background=Ui.B("#CC5A2B2B");
+   padChip.Visibility=Visibility.Visible;
+  }
+ }
  void AnimateDetailsIn(){
   var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
   details.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(250)));
@@ -614,6 +670,10 @@ public sealed class MainWindow:Window{
   detailSync.Text=steam?CloudLog.Describe(first):"";
   detailSync.Foreground=Ui.B(CloudLog.Tone(first));
   detailTiles.Visibility=steam?Visibility.Visible:Visibility.Collapsed;
+  detailTiles2.Visibility=steam&&game.Installed?Visibility.Visible:Visibility.Collapsed;
+  detailLast.Text=LastPlayedText(game.LastPlayed);
+  ShowLocal(game);
+  padChip.Visibility=Visibility.Collapsed;
   detailDesc.Text="";
   detailDesc.Visibility=Visibility.Collapsed;
   ShowDetailState(game);
@@ -622,6 +682,7 @@ public sealed class MainWindow:Window{
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
   AnimateDetailsIn();
+  if(steam)LoadPadChip(game);
   var infoTask=steam?Details.Get(game.Id):Task.FromResult<GameInfo?>(null);
   var statsTask=steam?Stats.Get(game.Id):Task.FromResult<PlayInfo?>(null);
   var art=await Art.Hero(game.Id);
@@ -714,6 +775,7 @@ public sealed class MainWindow:Window{
    var current=CloudLog.Status(detailGame.Id);
    detailSync.Text=CloudLog.Describe(current);
    detailSync.Foreground=Ui.B(CloudLog.Tone(current));
+   if(detailGame.Installed)ShowLocal(detailGame);
   }
  }
  void Supervise(){
