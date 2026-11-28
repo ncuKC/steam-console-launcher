@@ -1,12 +1,14 @@
 using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text.Json;
+using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed record LocalInfo(string Size,string State,string Tone);
 public sealed record ReviewInfo(string Text,string Detail,string Tone,DateTime When);
 public static class Extra{
  static readonly HttpClient Web=new(){Timeout=TimeSpan.FromSeconds(12)};
+ static readonly SemaphoreSlim ShotGate=new(3);
  static readonly ConcurrentDictionary<string,string> Support=new();
  static readonly ConcurrentDictionary<string,ReviewInfo> ReviewMemory=new();
  static Extra(){
@@ -43,6 +45,60 @@ public static class Extra{
    }catch{}
    return result;
   }catch{return "";}
+ }
+ public static async Task<List<string>> Screenshots(string id){
+  var file=Path.Combine(Library.Root,"shots",id+".json");
+  try{
+   if(File.Exists(file)&&(DateTime.Now-File.GetLastWriteTime(file)).TotalDays<7){
+    var saved=JsonSerializer.Deserialize<List<string>>(await File.ReadAllTextAsync(file));
+    if(saved!=null)return saved;
+   }
+  }catch{}
+  var urls=new List<string>();
+  try{
+   var json=await Web.GetStringAsync("https://store.steampowered.com/api/appdetails?appids="+id+"&filters=screenshots");
+   using var doc=JsonDocument.Parse(json);
+   if(!doc.RootElement.TryGetProperty(id,out var entry)||!entry.TryGetProperty("data",out var data)||data.ValueKind!=JsonValueKind.Object)return urls;
+   if(data.TryGetProperty("screenshots",out var list)&&list.ValueKind==JsonValueKind.Array){
+    foreach(var item in list.EnumerateArray()){
+     if(urls.Count>=8)break;
+     if(item.TryGetProperty("path_full",out var path)&&path.GetString() is {Length:>0} link)urls.Add(link);
+    }
+   }
+   try{
+    Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+    await File.WriteAllTextAsync(file,JsonSerializer.Serialize(urls));
+   }catch{}
+  }catch{}
+  return urls;
+ }
+ public static async Task<BitmapImage?> Shot(string id,int index,string url){
+  await ShotGate.WaitAsync();
+  try{
+   var folder=Path.Combine(Library.Root,"shots");
+   var file=Path.Combine(folder,id+"_"+index+".bin");
+   byte[] data;
+   if(File.Exists(file))data=await File.ReadAllBytesAsync(file);
+   else{
+    data=await Web.GetByteArrayAsync(url);
+    try{
+     Directory.CreateDirectory(folder);
+     await File.WriteAllBytesAsync(file,data);
+    }catch{}
+   }
+   return await Task.Run(()=>{
+    using var stream=new MemoryStream(data);
+    var image=new BitmapImage();
+    image.BeginInit();
+    image.CacheOption=BitmapCacheOption.OnLoad;
+    image.DecodePixelWidth=1920;
+    image.StreamSource=stream;
+    image.EndInit();
+    image.Freeze();
+    return image;
+   });
+  }catch{return null;}
+  finally{ShotGate.Release();}
  }
  static string Russian(string text)=>text switch{
   "Overwhelmingly Positive"=>"Крайне положительные",

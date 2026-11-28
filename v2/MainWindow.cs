@@ -43,6 +43,9 @@ public sealed class MainWindow:Window{
  readonly Grid details=new(){Visibility=Visibility.Collapsed,Background=Ui.B("#0B0F15")};
  readonly Image detailArt=new(){Stretch=Stretch.UniformToFill,Opacity=0,RenderTransformOrigin=new Point(.5,.5)};
  readonly ScaleTransform artZoom=new(1,1);
+ readonly List<ImageSource> gallery=new();
+ readonly Border galleryBadge=new(){CornerRadius=new CornerRadius(14),Padding=new Thickness(18,8,18,8),Background=Ui.B("#99000000"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(0,0,60,70),Visibility=Visibility.Collapsed};
+ readonly TextBlock galleryText=new(){FontSize=20,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
  readonly Border detailCard=new(){Width=1000,HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(100,0,0,0),Padding=new Thickness(48,40,48,40),CornerRadius=new CornerRadius(24),Background=new LinearGradientBrush(Color.FromArgb(0xE6,0x18,0x25,0x34),Color.FromArgb(0xD0,0x0B,0x11,0x19),60),BorderBrush=new SolidColorBrush(Color.FromArgb(0x44,255,255,255)),BorderThickness=new Thickness(1),Effect=new DropShadowEffect{BlurRadius=70,ShadowDepth=0,Opacity=.8,Color=Colors.Black}};
  readonly TranslateTransform cardShift=new(-70,0);
  readonly StackPanel detailBody=new();
@@ -83,7 +86,7 @@ public sealed class MainWindow:Window{
  List<string> letters=new();
  List<int> sectionIds=new();
  List<ImageSource> slides=new();
- int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken;
+ int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken,galleryIndex,shotToken;
  bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip;
  string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
@@ -439,6 +442,8 @@ public sealed class MainWindow:Window{
   detailCard.Child=detailBody;
   detailCard.RenderTransform=cardShift;
   details.Children.Add(detailCard);
+  galleryBadge.Child=galleryText;
+  details.Children.Add(galleryBadge);
   canvas.Children.Add(details);
  }
  void Dim(bool on)=>dim.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(on?.55:0,TimeSpan.FromMilliseconds(240)));
@@ -456,6 +461,7 @@ public sealed class MainWindow:Window{
   if(keyboard.IsOpen)SetHints(("A","Ввод"),("X","Стереть"),("Y","Пробел"),("B","Закрыть"));
   else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
   else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
+  else if(inDetails)SetHints(("A","Играть"),("Y","Действия"),("LB/RB","Скриншоты"),("B","Назад"));
   else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Вкладка"));
   else if(tab==0)SetHints(("A","Открыть"),("≡","Меню"),("LB/RB","Вкладка"));
   else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("B","Разделы"),("≡","Меню"));
@@ -691,6 +697,28 @@ public sealed class MainWindow:Window{
   detailReviews.Foreground=Ui.B(info.Tone);
   detailReviews.Visibility=Visibility.Visible;
  }
+ void ShowShot(int index){
+  if(gallery.Count==0)return;
+  galleryIndex=(index+gallery.Count)%gallery.Count;
+  detailArt.Source=gallery[galleryIndex];
+  detailArt.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(350)));
+  galleryText.Text="◄  "+(galleryIndex+1)+" / "+gallery.Count+"  ►";
+ }
+ void MoveShot(int delta){
+  if(gallery.Count>1)ShowShot(galleryIndex+delta);
+ }
+ async void LoadShots(Game game,int token){
+  var urls=await Extra.Screenshots(game.Id);
+  for(int i=0;i<urls.Count;i++){
+   var image=await Extra.Shot(game.Id,i,urls[i]);
+   if(!inDetails||detailGame!=game||token!=shotToken)return;
+   if(image==null)continue;
+   gallery.Add(image);
+   if(detailArt.Source==null)ShowShot(0);
+   galleryBadge.Visibility=gallery.Count>1?Visibility.Visible:Visibility.Collapsed;
+   galleryText.Text="◄  "+(galleryIndex+1)+" / "+gallery.Count+"  ►";
+  }
+ }
  void AnimateDetailsIn(){
   var ease=new CubicEase{EasingMode=EasingMode.EaseOut};
   details.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(250)));
@@ -703,6 +731,10 @@ public sealed class MainWindow:Window{
  async void OpenDetails(Game game){
   bool steam=game.Store=="Steam";
   inDetails=true;
+  int token=++shotToken;
+  gallery.Clear();
+  galleryIndex=0;
+  galleryBadge.Visibility=Visibility.Collapsed;
   detailGame=game;
   detailTitle.Text=game.Name;
   detailMeta.Text="";
@@ -726,14 +758,19 @@ public sealed class MainWindow:Window{
   detailArt.Source=null;
   details.Visibility=Visibility.Visible;
   AnimateDetailsIn();
+  UpdateHints();
   if(steam)LoadPadChip(game);
   if(steam)LoadReviews(game);
   var infoTask=steam?Details.Get(game.Id):Task.FromResult<GameInfo?>(null);
   var statsTask=steam?Stats.Get(game.Id):Task.FromResult<PlayInfo?>(null);
   var art=await Art.Hero(game.Id);
-  if(inDetails&&detailGame==game){
+  if(inDetails&&detailGame==game&&token==shotToken){
    detailArt.Source=art;
-   if(art!=null)detailArt.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)));
+   if(art!=null){
+    gallery.Add(art);
+    detailArt.BeginAnimation(UIElement.OpacityProperty,new DoubleAnimation(0,1,TimeSpan.FromMilliseconds(700)));
+   }
+   if(steam)LoadShots(game,token);
   }
   var stats=await statsTask;
   if(steam&&inDetails&&detailGame==game)detailStats.Text=PlayTime(stats);
@@ -748,10 +785,13 @@ public sealed class MainWindow:Window{
  }
  void CloseDetails(){
   inDetails=false;
+  shotToken++;
+  galleryBadge.Visibility=Visibility.Collapsed;
   var fade=new DoubleAnimation(1,0,TimeSpan.FromMilliseconds(150));
   fade.Completed+=(_,_)=>{if(!inDetails)details.Visibility=Visibility.Collapsed;};
   details.BeginAnimation(UIElement.OpacityProperty,fade);
   if(favChanged){favChanged=false;FillShelves();}
+  UpdateHints();
  }
  void Launch(Game? game){
   if(game==null)return;
@@ -886,6 +926,8 @@ public sealed class MainWindow:Window{
    if(code==1)CloseDetails();
    else if(code==0||code==2)Launch(detailGame);
    else if(code==3&&detailGame!=null)OpenActions(detailGame);
+   else if(code==9)MoveShot(-1);
+   else if(code==10)MoveShot(1);
    return;
   }
   switch(code){
