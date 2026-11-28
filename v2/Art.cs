@@ -10,6 +10,7 @@ public static class Art{
  static readonly string[] Hosts={"https://shared.fastly.steamstatic.com","https://cdn.akamai.steamstatic.com"};
  public static Task<BitmapImage?> Wide(string id)=>Get(id+"_wide",new[]{"capsule_616x353.jpg","header.jpg"},id,600);
  public static Task<BitmapImage?> Hero(string id)=>Get(id+"_hero",new[]{"library_hero.jpg","header.jpg"},id,1600);
+ public static Task<BitmapImage?> Logo(string id)=>Get(id+"_logo",new[]{"logo.png","library_logo.png"},id,700);
  static Task<BitmapImage?> Get(string key,string[] names,string id,int width)=>Cache.GetOrAdd(key,_=>new Lazy<Task<BitmapImage?>>(()=>Load(key,names,id,width))).Value;
  static BitmapImage Decode(byte[] bytes,int width){
   using var stream=new MemoryStream(bytes);
@@ -67,6 +68,7 @@ public static class Art{
      }catch{}
     }
    }
+   if(key.EndsWith("_logo"))return null;
    byte[]? fallback=FromSteamCache(id,key.EndsWith("_hero")?new[]{"library_hero.jpg","library_header.jpg","header.jpg"}:new[]{"library_header.jpg","header.jpg"});
    fallback??=await FromStoreApi(id);
    if(fallback!=null){

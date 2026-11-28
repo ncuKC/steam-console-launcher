@@ -8,12 +8,13 @@ using Microsoft.Win32;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
  static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
- readonly Image backdrop=new(){Stretch=Stretch.UniformToFill,Opacity=.55};
+ static readonly string[] TabNames={"Главная","Библиотека","Магазин"};
+ readonly Image backdrop=new(){Stretch=Stretch.UniformToFill};
  readonly Sections sections=new();
  readonly Shelves library=new();
  readonly Grid store=new(){Visibility=Visibility.Collapsed};
  readonly Grid details=new(){Visibility=Visibility.Collapsed,Background=Ui.B("#0B0F15")};
- readonly Image detailArt=new(){Stretch=Stretch.UniformToFill,Opacity=.7};
+ readonly Image detailArt=new(){Stretch=Stretch.UniformToFill};
  readonly TextBlock detailTitle=new(){FontSize=68,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,TextWrapping=TextWrapping.Wrap,MaxWidth=1100};
  readonly TextBlock detailStatus=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,0,0,10)};
  readonly TextBlock detailPlay=new(){FontSize=28,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White};
@@ -21,9 +22,10 @@ public sealed class MainWindow:Window{
  readonly TextBlock detailStats=new(){FontSize=24,FontWeight=FontWeights.SemiBold,Foreground=Ui.B("#66C0F4"),Margin=new Thickness(0,10,0,0)};
  readonly TextBlock detailDesc=new(){FontSize=24,Foreground=Ui.B("#C6D4DF"),TextWrapping=TextWrapping.Wrap,MaxWidth=900,MaxHeight=150,TextTrimming=TextTrimming.CharacterEllipsis,Margin=new Thickness(0,18,0,0)};
  readonly TextBlock detailHint=new(){FontSize=22,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Bottom,Margin=new Thickness(120,0,0,50)};
- readonly TextBlock chip=new(){FontSize=22,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,14,44,0),Visibility=Visibility.Collapsed};
- readonly Border[] tabBorders=new Border[3];
- readonly TextBlock clock=new(){FontSize=26,Foreground=Ui.B("#C6D4DF"),VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Right};
+ readonly TextBlock chip=new(){FontSize=20,Foreground=Ui.B("#C6D4DF"),HorizontalAlignment=HorizontalAlignment.Right,VerticalAlignment=VerticalAlignment.Top,Margin=new Thickness(0,16,44,0),Visibility=Visibility.Collapsed};
+ readonly TextBlock screenName=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center};
+ readonly TextBlock tabDots=new(){FontSize=14,Foreground=Ui.B("#66C0F4"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(20,0,0,0)};
+ readonly TextBlock clock=new(){FontSize=22,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Right};
  readonly WrapPanel hints=new(){VerticalAlignment=VerticalAlignment.Center};
  readonly Gamepad pad=new();
  readonly DispatcherTimer timer=new(){Interval=TimeSpan.FromMilliseconds(33)};
@@ -33,6 +35,7 @@ public sealed class MainWindow:Window{
  List<Game> games=new();
  List<Game> libraryOrder=new();
  List<string> letters=new();
+ List<int> sectionIds=new();
  int tab,version,comboTicks,filter,sort,letterIndex,pollTicks,watchTicks;
  bool reverse,watchSeen;
  string? watchId;
@@ -40,9 +43,8 @@ public sealed class MainWindow:Window{
  bool inDetails,favChanged;
  Game? detailGame;
  Shelves? Active=>tab==1?library:null;
- static TextBlock Hint(string text)=>new(){Text=text,FontSize=18,Foreground=Ui.B("#8F98A0"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,10,0)};
  static IEnumerable<(string Title,List<Game> Games)> Chunks(string title,List<Game> list){
-  for(int i=0;i<list.Count;i+=5)yield return (i==0?title:"",list.Skip(i).Take(5).ToList());
+  if(list.Count>0)yield return (title,list);
  }
  static (Func<string>,Action<int>) Item(Func<string> text,Action<int> act)=>(text,act);
  static int Step(int direction)=>direction==0?1:direction;
@@ -73,31 +75,20 @@ public sealed class MainWindow:Window{
   var canvas=new Grid{Width=1920,Height=1080,Background=Ui.B("#0B0F15")};
   Content=new Viewbox{Stretch=Stretch.Uniform,Child=canvas};
   canvas.Children.Add(backdrop);
-  canvas.Children.Add(new Border{IsHitTestVisible=false,Background=Ui.Gradient(new Point(0,0),new Point(1,0),250,70)});
-  canvas.Children.Add(new Border{IsHitTestVisible=false,Background=Ui.Gradient(new Point(0,0),new Point(0,1),40,255)});
-  var layout=new Grid{Margin=new Thickness(60,24,60,20)};
-  layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(84)});
+  canvas.Children.Add(new Border{IsHitTestVisible=false,Width=1300,HorizontalAlignment=HorizontalAlignment.Left,Background=Ui.Gradient(new Point(0,0),new Point(1,0),210,0)});
+  canvas.Children.Add(new Border{IsHitTestVisible=false,Height=620,VerticalAlignment=VerticalAlignment.Bottom,Background=Ui.Gradient(new Point(0,0),new Point(0,1),0,245)});
+  var layout=new Grid();
+  layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(56)});
   layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(1,GridUnitType.Star)});
-  layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(64)});
+  layout.RowDefinitions.Add(new RowDefinition{Height=new GridLength(48)});
   canvas.Children.Add(layout);
-  var top=new Grid();
-  top.ColumnDefinitions.Add(new ColumnDefinition());
-  top.ColumnDefinitions.Add(new ColumnDefinition{Width=GridLength.Auto});
-  top.ColumnDefinitions.Add(new ColumnDefinition());
-  var tabs=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center};
-  Grid.SetColumn(tabs,1);
-  top.Children.Add(tabs);
-  tabs.Children.Add(Hint("LB"));
-  var names=new[]{"Главная","Библиотека","Магазин"};
-  for(int i=0;i<3;i++){
-   var border=new Border{BorderThickness=new Thickness(0,0,0,4),BorderBrush=Brushes.Transparent,Padding=new Thickness(18,8,18,8),Margin=new Thickness(4,0,4,0),Child=new TextBlock{Text=names[i],FontSize=30,Foreground=Brushes.White}};
-   tabBorders[i]=border;
-   tabs.Children.Add(border);
-  }
-  tabs.Children.Add(Hint("RB"));
-  Grid.SetColumn(clock,2);
+  var top=new Grid{Margin=new Thickness(40,0,40,0)};
+  var nameBox=new StackPanel{Orientation=Orientation.Horizontal,VerticalAlignment=VerticalAlignment.Center,HorizontalAlignment=HorizontalAlignment.Left};
+  nameBox.Children.Add(screenName);
+  nameBox.Children.Add(tabDots);
+  top.Children.Add(nameBox);
   top.Children.Add(clock);
-  layout.Children.Add(top);
+  layout.Children.Add(new Border{Background=Ui.B("#B3000000"),Child=top});
   var pages=new Grid();
   Grid.SetRow(pages,1);
   layout.Children.Add(pages);
@@ -107,8 +98,9 @@ public sealed class MainWindow:Window{
   pages.Children.Add(chip);
   library.Visibility=Visibility.Collapsed;
   store.Children.Add(new TextBlock{Text="Магазин появится в следующей версии",FontSize=36,Foreground=Ui.B("#8F98A0"),HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center});
-  Grid.SetRow(hints,2);
-  layout.Children.Add(hints);
+  var bottomBar=new Border{Background=Ui.B("#B3000000"),Padding=new Thickness(40,0,40,0),Child=hints};
+  Grid.SetRow(bottomBar,2);
+  layout.Children.Add(bottomBar);
   BuildDetails(canvas);
   keyboard.Changed+=text=>{query=text;FillLibrary();};
   keyboard.FilterPressed+=CycleFilter;
@@ -119,7 +111,7 @@ public sealed class MainWindow:Window{
   menu=new SideMenu(CloseMenu,()=>Close());
   canvas.Children.Add(menu);
   sections.Focused+=game=>{if(game!=null)OnFocused(game);};
-  sections.Opened+=OpenSection;
+  sections.Opened+=index=>{if(index>=0&&index<sectionIds.Count)OpenSection(sectionIds[index]);};
   library.Focused+=OnFocused;
   library.Opened+=OpenDetails;
   PreviewKeyDown+=OnKey;
@@ -134,7 +126,7 @@ public sealed class MainWindow:Window{
  }
  void BuildDetails(Grid canvas){
   details.Children.Add(detailArt);
-  details.Children.Add(new Border{IsHitTestVisible=false,Background=Ui.Gradient(new Point(0,0),new Point(1,0),255,40)});
+  details.Children.Add(new Border{IsHitTestVisible=false,Width=1300,HorizontalAlignment=HorizontalAlignment.Left,Background=Ui.Gradient(new Point(0,0),new Point(1,0),235,0)});
   var panel=new StackPanel{HorizontalAlignment=HorizontalAlignment.Left,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(120,0,0,0)};
   panel.Children.Add(detailStatus);
   panel.Children.Add(detailTitle);
@@ -149,9 +141,9 @@ public sealed class MainWindow:Window{
  void SetHints(params (string Glyph,string Text)[] items){
   hints.Children.Clear();
   foreach(var (glyph,text) in items){
-   var group=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,34,0)};
-   group.Children.Add(new Border{MinWidth=36,Height=36,CornerRadius=new CornerRadius(18),BorderBrush=Ui.B("#66C0F4"),BorderThickness=new Thickness(2),Background=Ui.B("#1B2838"),Child=new TextBlock{Text=glyph,FontSize=18,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(8,0,8,0)}});
-   group.Children.Add(new TextBlock{Text=text,FontSize=22,Foreground=Ui.B("#C6D4DF"),VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(12,0,0,0)});
+   var group=new StackPanel{Orientation=Orientation.Horizontal,Margin=new Thickness(0,0,30,0)};
+   group.Children.Add(new Border{MinWidth=28,Height=28,CornerRadius=new CornerRadius(14),BorderBrush=Brushes.White,BorderThickness=new Thickness(1.5),Child=new TextBlock{Text=glyph,FontSize=14,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,HorizontalAlignment=HorizontalAlignment.Center,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(6,0,6,0)}});
+   group.Children.Add(new TextBlock{Text=text,FontSize=16,FontWeight=FontWeights.SemiBold,Foreground=Brushes.White,VerticalAlignment=VerticalAlignment.Center,Margin=new Thickness(10,0,0,0)});
    hints.Children.Add(group);
   }
  }
@@ -159,7 +151,7 @@ public sealed class MainWindow:Window{
   if(keyboard.IsOpen)SetHints(("A","Ввод"),("X","Стереть"),("Y","Пробел"),("B","Закрыть"));
   else if(popup.IsOpen)SetHints(("A","Выбрать"),("◄►","Изменить"),("B","Закрыть"));
   else if(menu.IsOpen)SetHints(("A","Выбрать"),("B","Назад"));
-  else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Раздел"));
+  else if(tab==2)SetHints(("≡","Меню"),("LB/RB","Вкладка"));
   else if(tab==0)SetHints(("A","Открыть"),("≡","Меню"),("LB/RB","Вкладка"));
   else SetHints(("A","Открыть"),("X","Играть"),("Y","Список"),("B","Разделы"),("≡","Меню"));
  }
@@ -211,10 +203,8 @@ public sealed class MainWindow:Window{
  }
  void SelectTab(int index){
   tab=index;
-  for(int i=0;i<3;i++){
-   tabBorders[i].BorderBrush=i==tab?Ui.B("#66C0F4"):Brushes.Transparent;
-   ((TextBlock)tabBorders[i].Child).Foreground=i==tab?Brushes.White:Ui.B("#8F98A0");
-  }
+  screenName.Text=TabNames[tab];
+  tabDots.Text=string.Join("  ",Enumerable.Range(0,3).Select(i=>i==tab?"\u25cf":"\u25cb"));
   sections.Visibility=tab==0?Visibility.Visible:Visibility.Collapsed;
   library.Visibility=tab==1?Visibility.Visible:Visibility.Collapsed;
   store.Visibility=tab==2?Visibility.Visible:Visibility.Collapsed;
@@ -225,10 +215,13 @@ public sealed class MainWindow:Window{
  }
  void FillShelves(){
   var items=new List<(string,int,Game?)>();
+  sectionIds.Clear();
   for(int i=0;i<FilterNames.Length;i++){
    var list=games.Where(item=>Matches(item,i)).ToList();
+   if(list.Count==0&&i!=0)continue;
    if(i==4)list=list.OrderByDescending(item=>item.LastPlayed).ToList();
    items.Add((FilterNames[i],list.Count,list.FirstOrDefault()));
+   sectionIds.Add(i);
   }
   sections.Set(items);
   FillLibrary();
