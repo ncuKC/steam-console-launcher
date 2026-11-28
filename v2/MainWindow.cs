@@ -11,7 +11,7 @@ using Shapes=System.Windows.Shapes;
 namespace ConsoleLauncher;
 public sealed class MainWindow:Window{
  static readonly string[] FilterNames={"Все","Установленные","Не установленные","Избранное","Недавние"};
- static readonly string[] StoreNames={"Все игры","Steam","Epic Games","GOG","Свои"};
+ static readonly string[] StoreNames={"Все игры","Steam","Epic Games","GOG","Свои","Избранное"};
  static readonly string[] TabNames={"Главная","Библиотека","Магазин"};
  readonly Border scene=new(){Visibility=Visibility.Collapsed};
  readonly Image backdrop=new(){Stretch=Stretch.UniformToFill};
@@ -84,7 +84,7 @@ public sealed class MainWindow:Window{
  List<ImageSource> slides=new();
  int tab,version,comboTicks,filter,sort=1,letterIndex,watchTicks,source,slideIndex,superviseTicks,styleTicks,dirTicks,saverToken;
  bool reverse,watchSeen,inDetails,favChanged,userMinimized,dirSeen,folderBusy,splashing=true,saver,saverFlip;
- string? watchId,watchDir,lastSteamId;
+ string? watchId,watchDir,lastSteamId,armedUninstall;
  string query="";
  DateTime graceUntil=DateTime.MinValue,syncUntil=DateTime.MinValue,lastInput=DateTime.Now;
  Game? detailGame;
@@ -119,6 +119,10 @@ public sealed class MainWindow:Window{
  static int Step(int direction)=>direction==0?1:direction;
  static string Letter(Game game)=>game.Name.Length>0?char.ToUpperInvariant(game.Name[0]).ToString():"#";
  static bool Matches(Game item,int mode)=>mode==0||(mode==1&&item.Installed)||(mode==2&&!item.Installed)||(mode==3&&Favorites.Has(item.Id))||(mode==4&&item.Installed&&item.LastPlayed>0);
+ static bool InSource(Game item,int index)=>index==0||(index==5?Favorites.Has(item.Id):item.Store==StoreNames[index]);
+ static void SteamLink(string verb,string id){
+  try{Process.Start(new ProcessStartInfo("steam://"+verb+"/"+id){UseShellExecute=true});}catch{}
+ }
  static async Task Pace(DateTime since,int milliseconds){
   int left=milliseconds-(int)(DateTime.Now-since).TotalMilliseconds;
   if(left>0)await Task.Delay(left);
@@ -490,6 +494,7 @@ public sealed class MainWindow:Window{
  }
  void OpenListMenu(){
   if(tab!=1)SelectTab(1);
+  popup.Title="Список игр";
   popup.SetItems(new[]{
    Item(()=>query.Length>0?"Поиск: "+query:"Поиск",_=>{popup.Close();OpenSearch();},"\ue721"),
    Item(()=>"Лаунчер: "+StoreNames[source],direction=>{source=(source+Step(direction)+StoreNames.Length)%StoreNames.Length;FillLibrary();},"\ue7fc"),
@@ -508,6 +513,33 @@ public sealed class MainWindow:Window{
    Item(()=>"Открыть папку «Свои»",_=>{popup.Close();Stores.OpenOwn();},"\ue8b7"),
    Item(()=>"Сбросить поиск и фильтр",_=>{query="";filter=0;source=0;sort=1;reverse=false;keyboard.SetFilter(FilterText());FillLibrary();},"\ue7a7")
   });
+  popup.Open();
+  Dim(true);
+  UpdateHints();
+ }
+ void OpenActions(Game game){
+  armedUninstall=null;
+  var items=new List<(Func<string>,Action<int>,string)>();
+  items.Add(Item(()=>Favorites.Has(game.Id)?"Убрать из избранного":"В избранное",_=>{
+   Favorites.Toggle(game.Id);
+   favChanged=true;
+   ShowDetailState(game);
+  },"\ue734"));
+  if(game.Store=="Steam"&&game.Installed){
+   items.Add(Item(()=>"Проверить файлы игры",_=>{
+    SteamLink("validate",game.Id);
+    popup.Close();
+   },"\ue73e"));
+   items.Add(Item(()=>armedUninstall==game.Id?"Удалить игру: нажмите ещё раз":"Удалить игру",_=>{
+    if(armedUninstall==game.Id){
+     armedUninstall=null;
+     SteamLink("uninstall",game.Id);
+     popup.Close();
+    }else armedUninstall=game.Id;
+   },"\ue74d"));
+  }
+  popup.Title="Действия";
+  popup.SetItems(items);
   popup.Open();
   Dim(true);
   UpdateHints();
@@ -531,6 +563,7 @@ public sealed class MainWindow:Window{
   UpdateHints();
  }
  void ShowScene(string name){
+  if(tab!=0)return;
   version++;
   slideTimer.Stop();
   slides=new List<ImageSource>();
@@ -546,7 +579,7 @@ public sealed class MainWindow:Window{
   var items=new List<(string,int,Game?)>();
   sectionIds.Clear();
   for(int i=0;i<StoreNames.Length;i++){
-   var list=games.Where(item=>i==0||item.Store==StoreNames[i]).ToList();
+   var list=games.Where(item=>InSource(item,i)).ToList();
    var sample=list.FirstOrDefault(item=>item.Store=="Steam")??list.FirstOrDefault();
    items.Add((StoreNames[i],list.Count,sample));
    sectionIds.Add(i);
@@ -562,13 +595,13 @@ public sealed class MainWindow:Window{
   return items;
  }
  void FillLibrary(){
-  var visible=games.Where(item=>(source==0||item.Store==StoreNames[source])&&Matches(item,filter)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
+  var visible=games.Where(item=>InSource(item,source)&&Matches(item,filter)&&item.Name.Contains(query,StringComparison.OrdinalIgnoreCase)).ToList();
   var installed=Sort(visible.Where(item=>item.Installed).ToList());
   var others=Sort(visible.Where(item=>!item.Installed).ToList());
   libraryOrder=installed.Concat(others).ToList();
   letters=libraryOrder.Select(Letter).Distinct().OrderBy(item=>item,StringComparer.CurrentCultureIgnoreCase).ToList();
   letterIndex=Math.Clamp(letterIndex,0,Math.Max(0,letters.Count-1));
-  library.EmptyHint=source==4?"Положите ярлык или exe в папку «Свои»: Y → Открыть папку «Свои».":source==2?"Здесь появляются игры, установленные через Epic Games Launcher.":source==3?"Здесь появляются игры, установленные из GOG.":"Измените поиск или фильтр.";
+  library.EmptyHint=source==5?"Отмечайте игры звездой: в карточке игры нажмите Y → В избранное.":source==4?"Положите ярлык или exe в папку «Свои»: Y → Открыть папку «Свои».":source==2?"Здесь появляются игры, установленные через Epic Games Launcher.":source==3?"Здесь появляются игры, установленные из GOG.":"Измените поиск или фильтр.";
   library.SetRows(Chunks("Установленные",installed).Concat(Chunks("Не установленные",others)));
   var text="Игр: "+visible.Count;
   if(source!=0)text+=" · "+StoreNames[source];
@@ -614,7 +647,7 @@ public sealed class MainWindow:Window{
   detailStore.Text=game.Store.ToUpperInvariant();
   favChip.Visibility=fav?Visibility.Visible:Visibility.Collapsed;
   detailPlay.Text=game.Installed?"Играть":"Установить";
-  detailFavLabel.Text=fav?"Убрать из избранного":"В избранное";
+  detailFavLabel.Text="Действия";
   badgeA.Text.Text=Controller.Label("A");
   badgeA.Box.BorderBrush=Controller.Tint("A");
   badgeY.Text.Text=Controller.Label("Y");
@@ -840,11 +873,7 @@ public sealed class MainWindow:Window{
   if(inDetails){
    if(code==1)CloseDetails();
    else if(code==0||code==2)Launch(detailGame);
-   else if(code==3&&detailGame!=null){
-    Favorites.Toggle(detailGame.Id);
-    favChanged=true;
-    ShowDetailState(detailGame);
-   }
+   else if(code==3&&detailGame!=null)OpenActions(detailGame);
    return;
   }
   switch(code){
